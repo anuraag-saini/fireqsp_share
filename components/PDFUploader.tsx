@@ -9,15 +9,36 @@ interface UploadedFile {
   id: string
 }
 
+interface ExtractionResults {
+  interactions: Array<{
+    id: string
+    mechanism: string
+    source: string
+    target: string
+    interaction_type: 'positive' | 'negative' | 'regulatory' | 'binding' | 'transport'
+    details: string
+    confidence: 'high' | 'medium' | 'low'
+    filename: string
+    selected?: boolean
+  }>
+  references: Record<string, string>
+  summary?: {
+    totalFiles: number
+    totalInteractions: number
+    filesWithErrors: number
+  }
+  errors?: string[]
+}
+
 interface PDFUploaderProps {
-  onExtractionComplete?: (results: any) => void
+  onExtractionComplete?: (results: ExtractionResults) => void
 }
 
 export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
   const { user } = useUser()
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [isExtracting, setIsExtracting] = useState(false)
-  const [extractionResults, setExtractionResults] = useState<any>(null)
+  const [extractionResults, setExtractionResults] = useState<ExtractionResults | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -59,7 +80,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
         throw new Error('Extraction failed')
       }
 
-      const results = await response.json()
+      const results: ExtractionResults = await response.json()
       setExtractionResults(results)
       onExtractionComplete?.(results)
 
@@ -176,8 +197,17 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
           <p className="text-green-600 text-sm mt-1">
             Found {extractionResults.interactions?.length || 0} interactions from {files.length} files
           </p>
+          
+          {extractionResults.errors && extractionResults.errors.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-green-200">
+              <p className="text-green-700 text-sm font-medium mb-1">Warnings:</p>
+              {extractionResults.errors.map((err, idx) => (
+                <p key={idx} className="text-green-600 text-xs">{err}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   )
-} 
+}

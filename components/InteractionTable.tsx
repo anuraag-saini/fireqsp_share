@@ -49,15 +49,20 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
   const columns = [
     columnHelper.display({
       id: 'select',
-      header: ({ table }) => (
-        <input
-          type="checkbox"
-          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          checked={table.getIsAllRowsSelected()}
-          indeterminate={table.getIsSomeRowsSelected()}
-          onChange={table.getToggleAllRowsSelectedHandler()}
-        />
-      ),
+      header: ({ table }) => {
+        const isIndeterminate = table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()
+        return (
+          <input
+            type="checkbox"
+            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            checked={table.getIsAllRowsSelected()}
+            ref={(el) => {
+              if (el) el.indeterminate = isIndeterminate
+            }}
+            onChange={table.getToggleAllRowsSelectedHandler()}
+          />
+        )
+      },
       cell: ({ row }) => (
         <input
           type="checkbox"
@@ -441,4 +446,4 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
       )}
     </div>
   )
-} 
+}

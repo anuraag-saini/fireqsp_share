@@ -144,10 +144,7 @@ export const useAppStore = create<AppState>()(
       },
       
       setDiagramCode: (diagramCode) => {
-        set({ 
-          diagramCode,
-          currentStep: diagramCode ? 'complete' : 'diagram'
-        })
+        set({ diagramCode })
       },
       
       setDiagramData: (diagramData) => {

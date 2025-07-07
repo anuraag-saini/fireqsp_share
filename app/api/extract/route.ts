@@ -1,6 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
+interface ExtractedInteraction {
+  mechanism: string
+  source: string
+  target: string
+  interaction_type: 'positive' | 'negative' | 'regulatory' | 'binding' | 'transport'
+  details: string
+  confidence: 'high' | 'medium' | 'low'
+  filename: string
+  id: string
+}
+
+interface ExtractionResult {
+  interactions: ExtractedInteraction[]
+  references: Record<string, string>
+  errors: string[]
+  summary: {
+    totalFiles: number
+    totalInteractions: number
+    filesWithErrors: number
+  }
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
@@ -20,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`Processing ${files.length} files for user: ${userEmail}`)
 
-    const interactions: any[] = []
+    const interactions: ExtractedInteraction[] = []
     const references: Record<string, string> = {}
     const errors: string[] = []
 
@@ -29,7 +51,7 @@ export async function POST(request: NextRequest) {
         console.log(`Processing file: ${file.name}`)
         
         // Extract text from PDF (simplified - in production use pdf-parse)
-        const text = await extractTextFromPDF(file)
+        const text = await extractTextFromPDF()
         
         // Extract interactions using OpenAI
         const extractionResult = await extractInteractionsFromText(text, file.name)
@@ -48,7 +70,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = {
+    const result: ExtractionResult = {
       interactions,
       references,
       errors,
@@ -72,7 +94,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function extractTextFromPDF(file: File): Promise<string> {
+async function extractTextFromPDF(): Promise<string> {
   // Simplified PDF text extraction
   // In production, use libraries like pdf-parse, pdf2pic + OCR, or external services
   
@@ -97,7 +119,12 @@ async function extractTextFromPDF(file: File): Promise<string> {
   return mockText
 }
 
-async function extractInteractionsFromText(text: string, filename: string) {
+interface OpenAIExtractionResult {
+  interactions: ExtractedInteraction[]
+  references: string | null
+}
+
+async function extractInteractionsFromText(text: string, filename: string): Promise<OpenAIExtractionResult> {
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -134,18 +161,22 @@ async function extractInteractionsFromText(text: string, filename: string) {
     const content = response.choices[0]?.message?.content
     if (content) {
       try {
-        const parsed = JSON.parse(content)
-        
-        // Add filename to each interaction
-        if (parsed.interactions) {
-          parsed.interactions = parsed.interactions.map((interaction: any) => ({
-            ...interaction,
-            filename,
-            id: Math.random().toString(36).substr(2, 9)
-          }))
+        const parsed = JSON.parse(content) as {
+          interactions: Omit<ExtractedInteraction, 'filename' | 'id'>[]
+          references: string | null
         }
         
-        return parsed
+        // Add filename and id to each interaction
+        const interactions: ExtractedInteraction[] = parsed.interactions?.map((interaction) => ({
+          ...interaction,
+          filename,
+          id: Math.random().toString(36).substr(2, 9)
+        })) || []
+        
+        return {
+          interactions,
+          references: parsed.references
+        }
       } catch (parseError) {
         console.error('JSON parsing error:', parseError)
         return { interactions: [], references: null }

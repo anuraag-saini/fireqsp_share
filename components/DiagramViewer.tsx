@@ -298,11 +298,7 @@ export function DiagramViewer({ interactions: propInteractions }: DiagramViewerP
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-xl font-semibold mb-1">🎨 Network Diagram</h2>
-          <p className="text-gray-600 text-sm">
-            Interactive visualization of {interactions.length} selected interactions
-          </p>
         </div>
-        
         <div className="flex gap-2">
           <button
             onClick={() => setShowSettings(!showSettings)}
@@ -311,14 +307,6 @@ export function DiagramViewer({ interactions: propInteractions }: DiagramViewerP
             <Settings className="h-4 w-4 mr-1" />
             Settings
             {showSettings ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
-          </button>
-          
-          <button
-            onClick={() => setShowCode(!showCode)}
-            className="flex items-center px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-          >
-            <Code className="h-4 w-4 mr-1" />
-            {showCode ? 'Hide' : 'Show'} Code
           </button>
           
           <button

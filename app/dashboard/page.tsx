@@ -114,28 +114,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Statistics Dashboard */}
-      {interactions.length > 0 && (
-        <div className="mb-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-            <div className="text-sm text-gray-600">Total Interactions</div>
-          </div>
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="text-2xl font-bold text-green-600">{stats.selected}</div>
-            <div className="text-sm text-gray-600">Selected</div>
-          </div>
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="text-2xl font-bold text-purple-600">{Object.keys(stats.byFile).length}</div>
-            <div className="text-sm text-gray-600">Source Files</div>
-          </div>
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="text-2xl font-bold text-orange-600">{Object.keys(stats.byType).length}</div>
-            <div className="text-sm text-gray-600">Interaction Types</div>
-          </div>
-        </div>
-      )}
-
       {/* Main Content - Two Column Layout for Large Screens */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         
@@ -154,84 +132,6 @@ export default function Dashboard() {
         <div className="space-y-8">
           {/* Step 3: Network Diagram */}
           <DiagramViewer />
-
-          {/* Selected Interactions Summary */}
-          {selectedInteractions.length > 0 && (
-            <div className="bg-white border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-4">🎯 Selection Summary</h3>
-              
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-                  <div className="text-xl font-bold text-green-600">{selectedInteractions.length}</div>
-                  <div className="text-xs text-green-600">Interactions</div>
-                </div>
-                <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="text-xl font-bold text-blue-600">
-                    {new Set(selectedInteractions.flatMap(i => [i.source, i.target])).size}
-                  </div>
-                  <div className="text-xs text-blue-600">Entities</div>
-                </div>
-                <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-                  <div className="text-xl font-bold text-purple-600">
-                    {new Set(selectedInteractions.map(i => i.interaction_type)).size}
-                  </div>
-                  <div className="text-xs text-purple-600">Types</div>
-                </div>
-              </div>
-
-              {/* Quick Preview */}
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                <h4 className="font-medium text-gray-900 text-sm">Selected Interactions:</h4>
-                {selectedInteractions.slice(0, 3).map((interaction) => (
-                  <div key={interaction.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-medium text-blue-600">{interaction.source}</span>
-                      <span className="text-gray-400">→</span>
-                      <span className="font-medium text-green-600">{interaction.target}</span>
-                    </div>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      interaction.interaction_type === 'positive' ? 'bg-green-100 text-green-700' :
-                      interaction.interaction_type === 'negative' ? 'bg-red-100 text-red-700' :
-                      'bg-purple-100 text-purple-700'
-                    }`}>
-                      {interaction.interaction_type}
-                    </span>
-                  </div>
-                ))}
-                {selectedInteractions.length > 3 && (
-                  <div className="text-center text-xs text-gray-500 py-2">
-                    ...and {selectedInteractions.length - 3} more
-                  </div>
-                )}
-              </div>
-
-              {/* Interaction Type Breakdown */}
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <h4 className="font-medium text-gray-900 text-sm mb-2">Type Distribution:</h4>
-                <div className="flex flex-wrap gap-1">
-                  {Object.entries(
-                    selectedInteractions.reduce((acc, interaction) => {
-                      acc[interaction.interaction_type] = (acc[interaction.interaction_type] || 0) + 1
-                      return acc
-                    }, {} as Record<string, number>)
-                  ).map(([type, count]) => (
-                    <span
-                      key={type}
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        type === 'positive' ? 'bg-green-100 text-green-800' :
-                        type === 'negative' ? 'bg-red-100 text-red-800' :
-                        type === 'regulatory' ? 'bg-purple-100 text-purple-800' :
-                        type === 'binding' ? 'bg-blue-100 text-blue-800' :
-                        'bg-orange-100 text-orange-800'
-                      }`}
-                    >
-                      {type}: {count}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
