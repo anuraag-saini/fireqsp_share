@@ -15,7 +15,7 @@ export async function extractPagesFromPDF(file: File): Promise<DocumentPage[]> {
         max: 0, // Parse all pages
     });
     
-    //console.log(`Extracted text from ${file.name} (${pdfData.numpages} pages)`)
+    // console.log(`Extracted text from ${file.name} (${pdfData.numpages} pages)`)
     
     // Split text into logical chunks (since pdf-parse doesn't preserve page boundaries)
     const chunks = splitTextIntoChunks(pdfData.text, 3000)
@@ -107,7 +107,7 @@ export function filterReferencePages(pages: DocumentPage[]): DocumentPage[] {
 
 export function createFilesHash(files: File[]): string {
   // Create hash based on file names, sizes, and last modified dates
-  const fileData = files.map(file => `${file.name}-${file.size}-${file.lastModified}`).join('|')
+  const fileData = files.map(file => `${file.name}-${file.size}`).join('|')
   
   // Simple hash function - you could use crypto for production
   let hash = 0

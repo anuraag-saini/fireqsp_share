@@ -67,8 +67,8 @@ function PricingCard({ plan }: { plan: typeof plans[0] }) {
         body: JSON.stringify({
           planType: plan.priceId, // Send plan type instead of price ID
           userEmail: user.emailAddresses[0]?.emailAddress,
-          successUrl: `${window.location.origin}/dashboard?success=true&plan=${plan.title.toLowerCase()}`,
-          cancelUrl: `${window.location.origin}/pricing?canceled=true`,
+          // successUrl: `${window.location.origin}/dashboard?success=true&plan=${plan.title.toLowerCase()}`,
+          // cancelUrl: `${window.location.origin}/pricing?canceled=true`,
         }),
       })
       

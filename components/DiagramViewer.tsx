@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { Download } from 'lucide-react'
+import { UserButton, useUser } from '@clerk/nextjs'
 
 interface Interaction {
   id: string
@@ -19,10 +20,40 @@ interface DiagramViewerProps {
 }
 
 export function DiagramViewer({ interactions }: DiagramViewerProps) {
+  const { user } = useUser()
+  const [userLimits, setUserLimits] = useState<any>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showLabels, setShowLabels] = useState(true)
+
+  // Replace the getUserLimits import and usage with this:
+  useEffect(() => {
+    const checkLimits = async () => {
+      try {
+        const response = await fetch('/api/subscription/status')
+        if (response.ok) {
+          const limits = await response.json()
+          setUserLimits(limits)
+        }
+      } catch (error) {
+        console.error('Failed to get limits:', error)
+      }
+    }
+    
+    checkLimits()
+  }, [user?.id])
+
+  // In your diagram rendering, add this simple limit:
+  const limitedInteractions = useMemo(() => {
+    if (!userLimits) return interactions
+    
+    // Simple limits
+    if (userLimits.plan === 'basic') return interactions.slice(0, 50)
+    if (userLimits.plan === 'expired') return interactions.slice(0, 10)
+    
+    return interactions // Trial and Pro get unlimited
+  }, [interactions, userLimits])
 
   // Generate Mermaid code from interactions
   const generateMermaidCode = (interactions: Interaction[], showLabels: boolean): string => {
@@ -146,7 +177,7 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
 
   // Render Mermaid diagram
   useEffect(() => {
-    if (!interactions.length) return
+    if (!limitedInteractions.length) return
 
     const renderDiagram = async () => {
       try {
@@ -154,7 +185,7 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
         setError(null)
 
         // Generate Mermaid code
-        const code = generateMermaidCode(interactions, showLabels)
+        const code = generateMermaidCode(limitedInteractions, showLabels)
         
         if (!code || code.trim() === '') {
           throw new Error('No Mermaid code generated')
@@ -197,7 +228,7 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
     }
 
     renderDiagram()
-  }, [interactions, showLabels])
+  }, [limitedInteractions, showLabels])
 
   const downloadSVG = () => {
     const svg = containerRef.current?.querySelector('svg')
@@ -253,7 +284,7 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
     }
   }
 
-  if (!interactions.length) {
+  if (!limitedInteractions.length) {
     return (
       <div className="bg-white border rounded-lg p-8 text-center">
         <div className="text-gray-400 mb-4">
@@ -274,7 +305,11 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
         <div>
           <h2 className="text-xl font-semibold mb-1">🎨 Interaction Network Diagram</h2>
           <p className="text-gray-600 text-sm">
-            Visualizing {interactions.length} biological interactions
+            {/* Visualizing {interactions.length} biological interactions */}
+            Visualizing {limitedInteractions.length} biological interactions
+            {limitedInteractions.length !== interactions.length && (
+              <span className="text-yellow-600"> (limited by plan)</span>
+            )}
           </p>
         </div>
         
@@ -336,6 +371,34 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
           className={`w-full ${isLoading || error ? 'hidden' : ''}`}
         />
       </div>
+
+      {/* Add this right after the diagram container div */}
+      {userLimits?.plan === 'basic' && interactions.length > 50 && (
+        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+          <p className="text-sm text-yellow-800">
+            Showing 50 of {interactions.length} interactions. 
+            <button 
+              onClick={() => window.location.href = '/pricing'}
+              className="ml-2 text-yellow-900 underline hover:no-underline"
+            >
+              Upgrade to see all
+            </button>
+          </p>
+        </div>
+      )}
+      {userLimits?.plan === 'expired' && interactions.length > 10 && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
+          <p className="text-sm text-red-800">
+            Showing 10 of {interactions.length} interactions. Trial expired.
+            <button 
+              onClick={() => window.location.href = '/pricing'}
+              className="ml-2 text-red-900 underline hover:no-underline"
+            >
+              Upgrade now
+            </button>
+          </p>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="mt-6 p-4 bg-gray-50 rounded-lg">

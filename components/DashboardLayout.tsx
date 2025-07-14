@@ -5,6 +5,7 @@ import { UserButton, useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useAppStore } from '@/stores/appStore'
 import { brandConfig } from '@/lib/brand-config'
+
 import { 
   Plus, 
   History, 
@@ -31,10 +32,28 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user } = useUser()
+  const [userLimits, setUserLimits] = useState<any>(null)
   const { currentStep, clearAll, setCurrentStep, setExtractionResults } = useAppStore()
   const [extractionHistory, setExtractionHistory] = useState<ExtractionHistory[]>([])
   const [isHistoryLoading, setIsHistoryLoading] = useState(true)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
+  // Replace the getUserLimits import and usage with this:
+  useEffect(() => {
+    const checkLimits = async () => {
+        try {
+        const response = await fetch('/api/subscription/status')
+        if (response.ok) {
+            const limits = await response.json()
+            setUserLimits(limits)
+        }
+        } catch (error) {
+        console.error('Failed to get limits:', error)
+        }
+    }
+    
+    checkLimits()
+  }, [user?.id])
 
   // Load user's extraction history using API
   useEffect(() => {
@@ -158,15 +177,31 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Sidebar Header */}
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
+            {/* <Link
+              href="/"
+              className="flex items-center px-3 py-2 text-gray-700 rounded-lg"
+            >
+              {!isSidebarCollapsed && (
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">🔥 FireQSP</h1>
+              </div>
+            )}
+            </Link> */}
+
             <Link href="/" className="text-2xl font-bold" style={{ color: brandConfig.colors.primary[600] }}>
-            🔥 FireQSP
+            {!isSidebarCollapsed && (
+              <div>
+                🔥 FireQSP
+              </div>
+            )}
+            
           </Link>
 
             <button
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               className="p-2 hover:bg-gray-100 rounded-lg"
             >
-              {isSidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              {isSidebarCollapsed ? <ChevronRight className="h-6 w-6" /> : <ChevronLeft className="h-6 w-6" />}
             </button>
           </div>
         </div>
@@ -177,8 +212,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                        
             <button
               onClick={handleNewExtraction}
-              className="w-full flex items-center px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-            >
+              className="w-full flex items-center px-1 py-1 text-blue-600 hover:bg-blue-50 rounded-lg">
               <Plus className="h-4 w-4" />
               {!isSidebarCollapsed && <span className="ml-3">New Extraction</span>}
             </button>
@@ -265,6 +299,42 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             )}
           </div>
         </div>
+
+        {userLimits?.plan === 'expired' && (
+            <div className="bg-red-50 border-b border-red-200 px-6 py-3">
+                <div className="flex justify-between items-center">
+                <div>
+                    <p className="text-sm text-red-800">
+                    🚨 Trial expired. Limited to 1 PDF per extraction.
+                    </p>
+                </div>
+                <button
+                    onClick={() => window.location.href = '/pricing'}
+                    className="px-4 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                >
+                    Upgrade Now
+                </button>
+                </div>
+            </div>
+            )}
+
+            {userLimits?.plan === 'trial' && (
+            <div className="bg-blue-50 border-b border-blue-200 px-6 py-3">
+                <div className="flex justify-between items-center">
+                <div>
+                    <p className="text-sm text-blue-800">
+                    🎯 Free trial active. Upgrade anytime for unlimited access.
+                    </p>
+                </div>
+                <button
+                    onClick={() => window.location.href = '/pricing'}
+                    className="px-4 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                >
+                    View Plans
+                </button>
+                </div>
+            </div>
+        )}
 
         {/* User Section */}
         <div className="p-4 border-t border-gray-200">

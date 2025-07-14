@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect,useState } from 'react'
 import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { DashboardLayout } from '@/components/DashboardLayout'
@@ -10,9 +10,11 @@ import { DiagramViewer } from '@/components/DiagramViewer'
 import { useAppStore } from '@/stores/appStore'
 import { ArrowLeft, Upload, Table, Network } from 'lucide-react'
 
+
 export default function Dashboard() {
   const { isSignedIn, user, isLoaded } = useUser()
   const router = useRouter()
+  const [userLimits, setUserLimits] = useState<any>(null)
   
   const { 
     interactions, 
@@ -28,6 +30,63 @@ export default function Dashboard() {
       router.push('/sign-in')
     }
   }, [isLoaded, isSignedIn, router])
+
+  
+  // Add this useEffect after your existing ones
+  // Replace the getUserLimits import and usage with this:
+  useEffect(() => {
+    const checkLimits = async () => {
+      try {
+        const response = await fetch('/api/subscription/status')
+        if (response.ok) {
+          const limits = await response.json()
+          setUserLimits(limits)
+        }
+      } catch (error) {
+        console.error('Failed to get limits:', error)
+      }
+    }
+    
+    checkLimits()
+  }, [user?.id])
+
+  // Replace the handleSuccessfulPayment useEffect with this:
+  useEffect(() => {
+    const handleSuccessfulPayment = async () => {
+      const urlParams = new URLSearchParams(window.location.search)
+      const success = urlParams.get('success')
+      const sessionId = urlParams.get('session_id')
+      
+      if (success === 'true' && sessionId && user?.id) {
+        console.log('Payment successful, verifying session:', sessionId)
+        
+        try {
+          // Verify the Stripe session and update plan
+          const response = await fetch('/api/subscription/verify-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: sessionId,
+              userId: user.id
+            })
+          })
+          
+          if (response.ok) {
+            const result = await response.json()
+            console.log('Plan updated to:', result.planType)
+            // Clean up URL
+            window.history.replaceState({}, '', '/dashboard')
+            // Refresh to show new plan
+            window.location.reload()
+          }
+        } catch (error) {
+          console.error('Failed to verify payment:', error)
+        }
+      }
+    }
+    
+    handleSuccessfulPayment()
+  }, [user?.id])
 
   if (!isLoaded) {
     return (
@@ -109,6 +168,29 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* // Add this simple status display right after the description */}
+        {userLimits && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="text-sm font-medium text-blue-900">
+                  Plan: {userLimits.plan === 'trial' ? 'Free Trial' : 
+                        userLimits.plan === 'basic' ? 'Basic' :
+                        userLimits.plan === 'pro' ? 'Pro' : '❌ Expired'}
+                </span>
+              </div>
+              {userLimits.plan === 'expired' && (
+                <button
+                  onClick={() => window.location.href = '/pricing'}
+                  className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                >
+                  Upgrade
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-auto">

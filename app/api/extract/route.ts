@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { currentUser } from '@clerk/nextjs/server'
+import { currentUser, auth } from '@clerk/nextjs/server'
 import { extractPagesFromPDF, createFilesHash } from '@/lib/pdf-processing'
 import { extractInteractionsFromPages, extractReferencesFromPages, extractDiseaseTypeFromPages } from '@/lib/extraction'
 import { SupabaseExtraction } from '@/lib/supabase-utils'
 import { Interaction } from '@/lib/prompts'
+import { incrementUserExtraction } from '@/lib/usage-tracking'
 
 export async function POST(request: NextRequest) {
   let extraction: any = null
@@ -173,6 +174,17 @@ export async function POST(request: NextRequest) {
     SupabaseExtraction.setCachedResult(cacheKey, result, 24)
 
     console.log(`Extraction complete: ${interactions.length} interactions found`)
+
+    // Add this just before the final return statement
+    try {
+      const { userId } = await auth()
+      if (userId) {
+        await incrementUserExtraction(userId)
+      }
+    } catch (error) {
+      console.error('Failed to track usage:', error)
+      // Don't fail the extraction if usage tracking fails
+    }
     
     return NextResponse.json(result)
     

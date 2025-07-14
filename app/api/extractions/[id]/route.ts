@@ -5,7 +5,7 @@ import { SupabaseExtraction } from '@/lib/supabase-utils'
 // GET - Get specific extraction data
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await currentUser()
@@ -13,7 +13,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const extraction = await SupabaseExtraction.getExtraction(params.id)
+    // Await the params object before accessing its properties
+    const { id } = await params
+    const extraction = await SupabaseExtraction.getExtraction(id)
     
     if (!extraction) {
       return NextResponse.json({ error: 'Extraction not found' }, { status: 404 })
