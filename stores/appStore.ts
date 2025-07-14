@@ -1,57 +1,42 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+// Simple, clean interaction interface - no more nested object confusion!
 interface Interaction {
   id: string
   mechanism: string
-  source: string
-  target: string
-  interaction_type: 'positive' | 'negative' | 'regulatory' | 'binding' | 'transport'
+  source: { name: string, level: string }  // Keep nested structure
+  target: { name: string, level: string }  // Keep nested structure
+  interaction_type: string
   details: string
-  confidence: 'high' | 'medium' | 'low'
+  confidence: string
   filename: string
   selected?: boolean
 }
 
 interface AppState {
-  // Extraction data
+  // Core data
   interactions: Interaction[]
-  selectedInteractions: Interaction[]
+  selectedInteractions: Interaction[]  // Keep this for navigation between steps
   references: Record<string, string>
   
-  // UI state
-  currentStep: 'upload' | 'select' | 'diagram' | 'complete'
-  
-  // Diagram state
-  diagramCode: string
-  diagramData: {
-    nodes: any[]
-    edges: any[]
-  } | null
+  // Simple UI state
+  currentStep: 'upload' | 'select' | 'diagram'
   
   // Actions
   setExtractionResults: (data: {
     interactions: Interaction[]
     references: Record<string, string>
   }) => void
-  updateInteraction: (id: string, updates: Partial<Interaction>) => void
-  setSelectedInteractions: (interactions: Interaction[]) => void
+  
   toggleInteractionSelection: (id: string) => void
   selectAllInteractions: () => void
   clearAllSelections: () => void
   setCurrentStep: (step: AppState['currentStep']) => void
-  setDiagramCode: (code: string) => void
-  setDiagramData: (data: AppState['diagramData']) => void
   clearAll: () => void
   
-  // Statistics
-  getStats: () => {
-    total: number
-    selected: number
-    byType: Record<string, number>
-    byConfidence: Record<string, number>
-    byFile: Record<string, number>
-  }
+  // Get selected interactions (computed)
+  getSelectedInteractions: () => Interaction[]
 }
 
 export const useAppStore = create<AppState>()(
@@ -62,36 +47,30 @@ export const useAppStore = create<AppState>()(
       selectedInteractions: [],
       references: {},
       currentStep: 'upload',
-      diagramCode: '',
-      diagramData: null,
       
       // Actions
       setExtractionResults: (data) => {
-        set({
-          interactions: data.interactions.map(interaction => ({
-            ...interaction,
-            selected: false // Initialize with no selections
-          })),
-          references: data.references,
-          currentStep: 'select',
-          selectedInteractions: [],
-          diagramCode: '',
-          diagramData: null
-        })
-      },
-      
-      updateInteraction: (id, updates) => {
-        set((state) => ({
-          interactions: state.interactions.map(item =>
-            item.id === id ? { ...item, ...updates } : item
-          )
+        console.log('AppStore: Setting extraction results:', data)
+        
+        // Clean and simple - no complex transformations!
+        const interactions = (data.interactions || []).map((item, index): Interaction => ({
+          id: item.id || `interaction_${index}`,
+          mechanism: item.mechanism || '',
+          source: item.source || { name: 'Unknown', level: 'Unknown' },
+          target: item.target || { name: 'Unknown', level: 'Unknown' },
+          interaction_type: item.interaction_type || 'binding',
+          details: item.details || '',
+          confidence: item.confidence || 'medium',
+          filename: item.filename || '',
+          selected: false
         }))
-      },
-      
-      setSelectedInteractions: (selectedInteractions) => {
-        set({ 
-          selectedInteractions,
-          currentStep: selectedInteractions.length > 0 ? 'diagram' : 'select'
+        
+        console.log('AppStore: Processed interactions:', interactions.length)
+        
+        set({
+          interactions,
+          references: data.references || {},
+          currentStep: interactions.length > 0 ? 'select' : 'upload'
         })
       },
       
@@ -105,8 +84,7 @@ export const useAppStore = create<AppState>()(
           
           return {
             interactions: updatedInteractions,
-            selectedInteractions,
-            currentStep: selectedInteractions.length > 0 ? 'diagram' : 'select'
+            selectedInteractions
           }
         })
       },
@@ -120,8 +98,7 @@ export const useAppStore = create<AppState>()(
           
           return {
             interactions: updatedInteractions,
-            selectedInteractions: updatedInteractions,
-            currentStep: 'diagram'
+            selectedInteractions: updatedInteractions
           }
         })
       },
@@ -132,68 +109,37 @@ export const useAppStore = create<AppState>()(
             ...item, 
             selected: false 
           })),
-          selectedInteractions: [],
-          currentStep: 'select',
-          diagramCode: '',
-          diagramData: null
+          selectedInteractions: []
         }))
       },
       
       setCurrentStep: (currentStep) => {
+        console.log('AppStore: Setting current step:', currentStep)
         set({ currentStep })
       },
       
-      setDiagramCode: (diagramCode) => {
-        set({ diagramCode })
-      },
-      
-      setDiagramData: (diagramData) => {
-        set({ diagramData })
-      },
-      
       clearAll: () => {
+        console.log('AppStore: Clearing all data')
         set({
           interactions: [],
           selectedInteractions: [],
           references: {},
-          currentStep: 'upload',
-          diagramCode: '',
-          diagramData: null
+          currentStep: 'upload'
         })
       },
       
-      // Statistics computed function
-      getStats: () => {
-        const state = get()
-        const total = state.interactions.length
-        const selected = state.selectedInteractions.length
-        
-        const byType = state.interactions.reduce((acc, item) => {
-          acc[item.interaction_type] = (acc[item.interaction_type] || 0) + 1
-          return acc
-        }, {} as Record<string, number>)
-        
-        const byConfidence = state.interactions.reduce((acc, item) => {
-          acc[item.confidence] = (acc[item.confidence] || 0) + 1
-          return acc
-        }, {} as Record<string, number>)
-        
-        const byFile = state.interactions.reduce((acc, item) => {
-          acc[item.filename] = (acc[item.filename] || 0) + 1
-          return acc
-        }, {} as Record<string, number>)
-        
-        return { total, selected, byType, byConfidence, byFile }
+      // Computed function to get selected interactions
+      getSelectedInteractions: () => {
+        return get().interactions.filter(item => item.selected)
       }
     }),
     {
       name: 'fireqsp-app-storage',
       partialize: (state) => ({
         interactions: state.interactions,
-        selectedInteractions: state.selectedInteractions,
+        selectedInteractions: state.selectedInteractions,  // Keep this for navigation
         references: state.references,
-        currentStep: state.currentStep,
-        diagramCode: state.diagramCode
+        currentStep: state.currentStep
       })
     }
   )

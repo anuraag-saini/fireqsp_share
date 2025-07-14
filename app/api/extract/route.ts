@@ -1,37 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
-
-interface ExtractedInteraction {
-  mechanism: string
-  source: string
-  target: string
-  interaction_type: 'positive' | 'negative' | 'regulatory' | 'binding' | 'transport'
-  details: string
-  confidence: 'high' | 'medium' | 'low'
-  filename: string
-  id: string
-}
-
-interface ExtractionResult {
-  interactions: ExtractedInteraction[]
-  references: Record<string, string>
-  errors: string[]
-  summary: {
-    totalFiles: number
-    totalInteractions: number
-    filesWithErrors: number
-  }
-}
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
+import { currentUser } from '@clerk/nextjs/server'
+import { extractPagesFromPDF, createFilesHash } from '@/lib/pdf-processing'
+import { extractInteractionsFromPages, extractReferencesFromPages, extractDiseaseTypeFromPages } from '@/lib/extraction'
+import { SupabaseExtraction } from '@/lib/supabase-utils'
+import { Interaction } from '@/lib/prompts'
 
 export async function POST(request: NextRequest) {
+  let extraction: any = null
+  
   try {
+    const user = await currentUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]
     const userEmail = formData.get('userEmail') as string
+    // const diseaseType = formData.get('diseaseType') as string || 'Others'
 
     if (!files.length) {
       return NextResponse.json(
@@ -42,44 +28,149 @@ export async function POST(request: NextRequest) {
 
     console.log(`Processing ${files.length} files for user: ${userEmail}`)
 
-    const interactions: ExtractedInteraction[] = []
-    const references: Record<string, string> = {}
-    const errors: string[] = []
+    // Check simple cache first
+    const cacheKey = createFilesHash(files)
+    const cachedResult = SupabaseExtraction.getCachedResult(cacheKey)
+    
+    if (cachedResult) {
+      console.log('Returning cached result')
+      return NextResponse.json({
+        ...cachedResult,
+        fromCache: true
+      })
+    }
+
+    // Create extraction record
+    extraction = await SupabaseExtraction.createExtraction({
+      user_id: user.id,
+      title: 'Processing...',
+      //title: `Extraction - ${new Date().toLocaleDateString()}`,
+      status: 'processing',
+      file_count: files.length,
+      interaction_count: 0,
+      interactions: null,
+      source_references: null,
+      errors: null
+    })
+
+    // Process all files together (simplified!)
+    const allPages: any[] = []
+    const fileErrors: string[] = []
 
     for (const file of files) {
       try {
         console.log(`Processing file: ${file.name}`)
+        const pages = await extractPagesFromPDF(file)
+        // Remove the filterReferencePages step - let AI handle it
+        allPages.push(...pages)
+        console.log(`Successfully processed ${file.name}: ${pages.length} pages`)
         
-        // Extract text from PDF (simplified - in production use pdf-parse)
-        const text = await extractTextFromPDF()
-        
-        // Extract interactions using OpenAI
-        const extractionResult = await extractInteractionsFromText(text, file.name)
-        
-        if (extractionResult.interactions) {
-          interactions.push(...extractionResult.interactions)
-        }
-        
-        if (extractionResult.references) {
-          references[file.name] = extractionResult.references
-        }
-
       } catch (error) {
-        console.error(`Error processing ${file.name}:`, error)
-        errors.push(`Failed to process ${file.name}: ${error}`)
+        const errorMessage = `Failed to process ${file.name}: ${error instanceof Error ? error.message : error}`
+        console.error(errorMessage)
+        fileErrors.push(errorMessage)
+        // Continue processing other files instead of stopping
       }
     }
 
-    const result: ExtractionResult = {
+    if (allPages.length === 0) {
+      await SupabaseExtraction.updateExtraction(extraction.id, { 
+        status: 'failed',
+        errors: fileErrors
+      })
+      
+      return NextResponse.json({
+        error: 'No content could be extracted from any files',
+        extraction_id: extraction.id,
+        errors: fileErrors
+      }, { status: 400 })
+    }
+
+    console.log(`Total pages extracted: ${allPages.length}`)
+    // Extract disease type from content (NEW!)
+    console.log('Extracting disease type from content...')
+    const { diseaseType, errors: diseaseErrors } = await extractDiseaseTypeFromPages(allPages)
+    console.log(`Detected disease type: ${diseaseType}`)
+
+    // Extract interactions and references (simplified - no progress callbacks)
+    const { interactions, errors: interactionErrors } = await extractInteractionsFromPages(
+      allPages,
+      diseaseType
+    )
+
+    const { references, errors: referenceErrors } = await extractReferencesFromPages(allPages)
+
+    const allErrors = [...fileErrors, ...diseaseErrors, ...interactionErrors, ...referenceErrors]
+    
+    console.log(`Extracted ${interactions.length} interactions`)
+
+    // Check if no interactions found
+    if (interactions.length === 0) {
+      await SupabaseExtraction.saveExtractionResults(
+        extraction.id,
+        [],
+        references,
+        [...allErrors, 'No interactions found in the uploaded documents']
+      )
+
+      return NextResponse.json({
+        extraction_id: extraction.id,
+        interactions: [],
+        references,
+        errors: [...allErrors, 'No interactions found in the uploaded documents'],
+        summary: {
+          totalFiles: files.length,
+          totalInteractions: 0,
+          filesWithErrors: fileErrors.length
+        },
+        message: 'No interactions found'
+      })
+    }
+
+    // Save everything to database in one operation
+    // Create simple title: Disease (X files) - Date
+    const baseTitle = diseaseType && diseaseType !== 'General' ? diseaseType : 'Untitled'
+    const finalTitle = `${baseTitle} (${files.length} file${files.length > 1 ? 's' : ''}) - ${formatDateForTitle()}`
+
+    // Save everything to database 
+    await SupabaseExtraction.saveExtractionResults(
+      extraction.id,
       interactions,
       references,
-      errors,
+      allErrors
+    )
+
+    // Update the title
+    await SupabaseExtraction.updateExtraction(extraction.id, { 
+      title: finalTitle
+    })
+
+    // Build clean result (no transformations needed!)
+    const result = {
+      extraction_id: extraction.id,
+      interactions: interactions.map((interaction, index): Interaction => ({
+        id: interaction.id || `interaction_${extraction.id}_${index}`,
+        mechanism: interaction.mechanism,
+        source: interaction.source,  // Keep nested object as-is!
+        target: interaction.target,   // Keep nested object as-is!
+        interaction_type: interaction.interaction_type,
+        details: interaction.details,
+        confidence: interaction.confidence || 'medium',
+        reference_text: interaction.reference_text,
+        page_number: interaction.page_number,
+        filename: interaction.filename || ''
+      })),
+      references,
+      errors: allErrors,
       summary: {
         totalFiles: files.length,
         totalInteractions: interactions.length,
-        filesWithErrors: errors.length
+        filesWithErrors: fileErrors.length
       }
     }
+
+    // Cache the result
+    SupabaseExtraction.setCachedResult(cacheKey, result, 24)
 
     console.log(`Extraction complete: ${interactions.length} interactions found`)
     
@@ -87,106 +178,42 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('Extraction API error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-async function extractTextFromPDF(): Promise<string> {
-  // Simplified PDF text extraction
-  // In production, use libraries like pdf-parse, pdf2pic + OCR, or external services
-  
-  // For now, return a mock text that simulates PDF content
-  const mockText = `
-    Biological Interaction Study
     
-    This study investigates the role of TNF-alpha in inflammatory responses.
-    TNF-alpha activates macrophages and leads to increased cytokine production.
-    IL-6 is upregulated by TNF-alpha signaling pathways.
-    
-    We observed that protein A binds to receptor B with high affinity.
-    This binding results in downstream activation of kinase C.
-    
-    The interaction between insulin and GLUT4 facilitates glucose uptake.
-    Insulin receptor activation triggers GLUT4 translocation to cell membrane.
-    
-    Results show that compound X inhibits enzyme Y activity by 80%.
-    This inhibition prevents phosphorylation of substrate Z.
-  `
-  
-  return mockText
-}
-
-interface OpenAIExtractionResult {
-  interactions: ExtractedInteraction[]
-  references: string | null
-}
-
-async function extractInteractionsFromText(text: string, filename: string): Promise<OpenAIExtractionResult> {
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an AI assistant specialized in extracting biological interactions from scientific text. 
-          Extract interactions between biological entities and return them as JSON.
-          
-          Return JSON with this structure:
-          {
-            "interactions": [
-              {
-                "mechanism": "description of interaction",
-                "source": "source entity name",
-                "target": "target entity name", 
-                "interaction_type": "positive|negative|regulatory|binding|transport",
-                "details": "additional details",
-                "confidence": "high|medium|low"
-              }
-            ],
-            "references": "bibliographic reference if found"
-          }`
-        },
-        {
-          role: 'user',
-          content: `Extract biological interactions from this text:\n\n${text}\n\nFilename: ${filename}`
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 2000
-    })
-
-    const content = response.choices[0]?.message?.content
-    if (content) {
+    // Update extraction status to failed if we have one
+    if (extraction?.id) {
       try {
-        const parsed = JSON.parse(content) as {
-          interactions: Omit<ExtractedInteraction, 'filename' | 'id'>[]
-          references: string | null
-        }
-        
-        // Add filename and id to each interaction
-        const interactions: ExtractedInteraction[] = parsed.interactions?.map((interaction) => ({
-          ...interaction,
-          filename,
-          id: Math.random().toString(36).substr(2, 9)
-        })) || []
-        
-        return {
-          interactions,
-          references: parsed.references
-        }
-      } catch (parseError) {
-        console.error('JSON parsing error:', parseError)
-        return { interactions: [], references: null }
+        await SupabaseExtraction.updateExtraction(extraction.id, { 
+          status: 'failed',
+          errors: [error instanceof Error ? error.message : 'Unknown error']
+        })
+      } catch (updateError) {
+        console.error('Failed to update extraction status:', updateError)
       }
     }
     
-    return { interactions: [], references: null }
+    return NextResponse.json(
+      { 
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
+  }
+  function formatDateForTitle(): string {
+    const now = new Date()
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
     
-  } catch (error) {
-    console.error('OpenAI API error:', error)
-    return { interactions: [], references: null }
+    if (now.toDateString() === today.toDateString()) {
+      return 'Today'
+    } else if (now.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday'
+    } else {
+      return now.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric' 
+      })
+    }
   }
 }

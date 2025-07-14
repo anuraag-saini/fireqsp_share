@@ -9,9 +9,10 @@ const plans = [
     price: '$19',
     description: 'Perfect for getting started with QSP modeling',
     features: [
-      'Up to 10 PDF uploads per month',
-      'Basic interaction extraction',
-      'Simple diagram generation',
+      'Up to 5 extractions per month',
+      'Maximum 5 PDFs upload per extractions',
+      'Fixed 50 intertractions for diagram',
+      'Full table export',
       'Email support'
     ],
     priceId: 'basic', // We'll pass this to the API
@@ -22,10 +23,11 @@ const plans = [
     price: '$99',
     description: 'Advanced features for professional researchers',
     features: [
-      'Unlimited PDF uploads',
-      'Advanced AI extraction',
-      'Interactive diagrams with export',
-      'ODE generation and simulation',
+      'Everything in Basic',
+      'Unlimited PDF uploads and extractions',
+      'Custom selections for interactions with export',
+      'Unlimited diagrams',
+      // 'ODE generation and simulation',
       'Priority support',
       'API access'
     ],

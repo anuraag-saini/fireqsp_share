@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -16,11 +16,11 @@ import { Search, Filter, Download, Eye, ChevronDown, ChevronUp } from 'lucide-re
 interface Interaction {
   id: string
   mechanism: string
-  source: string
-  target: string
-  interaction_type: 'positive' | 'negative' | 'regulatory' | 'binding' | 'transport'
+  source: { name: string, level: string }
+  target: { name: string, level: string }
+  interaction_type: string
   details: string
-  confidence: 'high' | 'medium' | 'low'
+  confidence: string
   filename: string
   selected?: boolean
 }
@@ -32,67 +32,114 @@ interface InteractionTableProps {
 export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
   const { 
     interactions, 
-    toggleInteractionSelection, 
-    selectAllInteractions, 
+    selectedInteractions,
+    toggleInteractionSelection,
+    selectAllInteractions,
     clearAllSelections,
     setCurrentStep 
   } = useAppStore()
   
   const [globalFilter, setGlobalFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
-  const [confidenceFilter, setConfidenceFilter] = useState('')
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+
+  // Apply filters
+  const filteredData = useMemo(() => {
+    return interactions.filter(item => {
+      const matchesGlobal = !globalFilter || 
+        Object.values(item).some(value => {
+          if (typeof value === 'object' && value !== null) {
+            return Object.values(value).some(nestedValue => 
+              String(nestedValue).toLowerCase().includes(globalFilter.toLowerCase())
+            )
+          }
+          return String(value).toLowerCase().includes(globalFilter.toLowerCase())
+        })
+      
+      const matchesType = !typeFilter || item.interaction_type === typeFilter
+      
+      return matchesGlobal && matchesType
+    })
+  }, [interactions, globalFilter, typeFilter])
+
+  // Create row selection state based on filtered data and store selections
+  const rowSelection = useMemo(() => {
+    const selection: RowSelectionState = {}
+    filteredData.forEach((item, index) => {
+      if (selectedInteractions.some(selected => selected.id === item.id)) {
+        selection[index] = true
+      }
+    })
+    return selection
+  }, [filteredData, selectedInteractions])
 
   const columnHelper = createColumnHelper<Interaction>()
 
   const columns = [
     columnHelper.display({
       id: 'select',
-      header: ({ table }) => {
-        const isIndeterminate = table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()
-        return (
-          <input
-            type="checkbox"
-            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            checked={table.getIsAllRowsSelected()}
-            ref={(el) => {
-              if (el) el.indeterminate = isIndeterminate
-            }}
-            onChange={table.getToggleAllRowsSelectedHandler()}
-          />
-        )
-      },
+      header: ({ table }) => (
+        <input
+          type="checkbox"
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          checked={table.getIsAllRowsSelected()}
+          ref={(el) => {
+            if (el) el.indeterminate = table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()
+          }}
+          onChange={(e) => {
+            if (e.target.checked) {
+              // Select all visible rows
+              filteredData.forEach(item => {
+                if (!selectedInteractions.some(selected => selected.id === item.id)) {
+                  toggleInteractionSelection(item.id)
+                }
+              })
+            } else {
+              // Deselect all visible rows
+              filteredData.forEach(item => {
+                if (selectedInteractions.some(selected => selected.id === item.id)) {
+                  toggleInteractionSelection(item.id)
+                }
+              })
+            }
+          }}
+        />
+      ),
       cell: ({ row }) => (
         <input
           type="checkbox"
           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          checked={row.getIsSelected()}
-          disabled={!row.getCanSelect()}
-          onChange={row.getToggleSelectedHandler()}
+          checked={selectedInteractions.some(selected => selected.id === row.original.id)}
+          onChange={() => toggleInteractionSelection(row.original.id)}
         />
       ),
-      size: 50
+      size: 30
     }),
 
     columnHelper.accessor('source', {
       header: 'Source',
-      cell: info => (
-        <span className="font-medium text-blue-600 text-sm">
-          {info.getValue()}
-        </span>
-      ),
-      size: 120
+      cell: info => {
+        const source = info.getValue()
+        return (
+          <span className="font-medium text-blue-600 text-sm">
+            {source.name}
+          </span>
+        )
+      },
+      size: 80
     }),
 
     columnHelper.accessor('target', {
       header: 'Target', 
-      cell: info => (
-        <span className="font-medium text-green-600 text-sm">
-          {info.getValue()}
-        </span>
-      ),
-      size: 120
+      cell: info => {
+        const target = info.getValue()
+        return (
+          <span className="font-medium text-green-600 text-sm">
+            {target.name}
+          </span>
+        )
+      },
+      size: 80
     }),
 
     columnHelper.accessor('interaction_type', {
@@ -100,14 +147,15 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
       cell: info => {
         const type = info.getValue()
         const colorMap = {
-          positive: 'bg-green-100 text-green-800 border-green-200',
-          negative: 'bg-red-100 text-red-800 border-red-200',
-          regulatory: 'bg-purple-100 text-purple-800 border-purple-200',
+          upregulation: 'bg-green-100 text-green-800 border-green-200',
+          activation: 'bg-green-100 text-green-800 border-green-200',
+          inhibition: 'bg-red-100 text-red-800 border-red-200',
+          downregulation: 'bg-purple-100 text-purple-800 border-purple-200',
           binding: 'bg-blue-100 text-blue-800 border-blue-200',
           transport: 'bg-orange-100 text-orange-800 border-orange-200'
         }
         return (
-          <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${colorMap[type] || 'bg-gray-100 text-gray-800 border-gray-200'}`}>
+          <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${colorMap[type as keyof typeof colorMap] || 'bg-gray-100 text-gray-800 border-gray-200'}`}>
             {type}
           </span>
         )
@@ -115,18 +163,40 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
       size: 100
     }),
 
-    columnHelper.accessor('confidence', {
-      header: 'Confidence',
-      cell: info => {
-        const confidence = info.getValue()
+    columnHelper.display({
+      id: 'source_level',
+      header: 'Source Level',
+      cell: ({ row }) => {
+        const level = row.original.source.level
         const colorMap = {
-          high: 'text-green-600',
-          medium: 'text-yellow-600',
-          low: 'text-red-600'
+          'Molecular': 'text-green-600',
+          'Cellular': 'text-blue-600', 
+          'Organ': 'text-red-600',
+          'Clinical': 'text-yellow-600'
         }
         return (
-          <span className={`text-xs font-medium ${colorMap[confidence] || 'text-gray-600'}`}>
-            {confidence.toUpperCase()}
+          <span className={`text-xs font-medium ${colorMap[level as keyof typeof colorMap] || 'text-gray-500'}`}>
+            {level}
+          </span>
+        )
+      },
+      size: 80
+    }),
+
+    columnHelper.display({
+      id: 'target_level', 
+      header: 'Target Level',
+      cell: ({ row }) => {
+        const level = row.original.target.level
+        const colorMap = {
+          'Molecular': 'text-green-600',
+          'Cellular': 'text-blue-600',
+          'Organ': 'text-red-600', 
+          'Clinical': 'text-yellow-600'
+        }
+        return (
+          <span className={`text-xs font-medium ${colorMap[level as keyof typeof colorMap] || 'text-gray-500'}`}>
+            {level}
           </span>
         )
       },
@@ -145,18 +215,6 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
       size: 200
     }),
 
-    columnHelper.accessor('details', {
-      header: 'Details',
-      cell: info => (
-        <div className="max-w-xs">
-          <p className="text-xs text-gray-600 truncate" title={info.getValue()}>
-            {info.getValue()}
-          </p>
-        </div>
-      ),
-      size: 150
-    }),
-
     columnHelper.accessor('filename', {
       header: 'Source File',
       cell: info => (
@@ -167,21 +225,6 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
       size: 120
     })
   ]
-
-  // Apply filters
-  const filteredData = useMemo(() => {
-    return interactions.filter(item => {
-      const matchesGlobal = !globalFilter || 
-        Object.values(item).some(value => 
-          String(value).toLowerCase().includes(globalFilter.toLowerCase())
-        )
-      
-      const matchesType = !typeFilter || item.interaction_type === typeFilter
-      const matchesConfidence = !confidenceFilter || item.confidence === confidenceFilter
-      
-      return matchesGlobal && matchesType && matchesConfidence
-    })
-  }, [interactions, globalFilter, typeFilter, confidenceFilter])
 
   const table = useReactTable({
     data: filteredData,
@@ -194,53 +237,36 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
       rowSelection,
       globalFilter
     },
-    onRowSelectionChange: setRowSelection,
+    onRowSelectionChange: () => {}, // Disable table's internal selection handling
     onGlobalFilterChange: setGlobalFilter
   })
 
-  // Get selected interactions
-  const selectedInteractions = useMemo(() => {
-    const selectedRows = table.getSelectedRowModel().rows
-    return selectedRows.map(row => row.original)
-  }, [table, rowSelection])
-
-  // Handle bulk selection
-  const handleSelectAll = () => {
-    table.toggleAllRowsSelected(true)
-  }
-
-  const handleClearAll = () => {
-    table.toggleAllRowsSelected(false)
-  }
-
-  // Generate diagram from selected interactions
   const handleCreateDiagram = () => {
     if (selectedInteractions.length === 0) {
       alert('Please select at least one interaction to create a diagram')
       return
     }
     
-    onSelectionChange?.(selectedInteractions)
     setCurrentStep('diagram')
+    onSelectionChange?.(selectedInteractions)
   }
 
-  // Export selected interactions to CSV
   const handleExportCSV = () => {
     if (selectedInteractions.length === 0) {
       alert('Please select interactions to export')
       return
     }
 
-    const headers = ['Source', 'Target', 'Type', 'Confidence', 'Mechanism', 'Details', 'Source File']
+    const headers = ['Source', 'Target', 'Type', 'Mechanism', 'Source Level', 'Target Level', 'Source File']
     const csvData = [
       headers.join(','),
       ...selectedInteractions.map(row => [
-        `"${row.source}"`,
-        `"${row.target}"`,
+        `"${row.source.name}"`,
+        `"${row.target.name}"`,
         `"${row.interaction_type}"`,
-        `"${row.confidence}"`,
         `"${row.mechanism}"`,
-        `"${row.details}"`,
+        `"${row.source.level}"`,
+        `"${row.target.level}"`,
         `"${row.filename}"`
       ].join(','))
     ].join('\n')
@@ -273,23 +299,23 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
         <div>
           <h2 className="text-xl font-semibold mb-1">📊 Select Interactions</h2>
           <p className="text-gray-600 text-sm">
-            Choose interactions to include in your model ({Object.keys(rowSelection).length} of {filteredData.length} selected)
+            Choose interactions to include in your model ({selectedInteractions.length} of {filteredData.length} selected)
           </p>
         </div>
         
         <div className="flex gap-2">
           <button
             onClick={handleCreateDiagram}
-            disabled={Object.keys(rowSelection).length === 0}
+            disabled={selectedInteractions.length === 0}
             className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
           >
             <Eye className="h-4 w-4 mr-2" />
-            Create Diagram ({Object.keys(rowSelection).length})
+            Create Diagram ({selectedInteractions.length})
           </button>
           
           <button
             onClick={handleExportCSV}
-            disabled={Object.keys(rowSelection).length === 0}
+            disabled={selectedInteractions.length === 0}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
           >
             <Download className="h-4 w-4 mr-2" />
@@ -300,7 +326,6 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
 
       {/* Filters */}
       <div className="mb-4 space-y-3">
-        {/* Search */}
         <div className="flex gap-4">
           <div className="flex-1 relative">
             <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -323,7 +348,6 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
           </button>
         </div>
 
-        {/* Advanced Filters */}
         {showAdvancedFilters && (
           <div className="flex gap-4 p-4 bg-gray-50 rounded-lg">
             <select
@@ -332,28 +356,17 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
               className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Types</option>
-              <option value="positive">Positive</option>
-              <option value="negative">Negative</option>
-              <option value="regulatory">Regulatory</option>
+              <option value="upregulation">Upregulation</option>
+              <option value="activation">Activation</option>
+              <option value="inhibition">Inhibition</option>
+              <option value="downregulation">Downregulation</option>
               <option value="binding">Binding</option>
               <option value="transport">Transport</option>
-            </select>
-            
-            <select
-              value={confidenceFilter}
-              onChange={(e) => setConfidenceFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Confidence</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
             </select>
 
             <button
               onClick={() => {
                 setTypeFilter('')
-                setConfidenceFilter('')
                 setGlobalFilter('')
               }}
               className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800"
@@ -362,22 +375,6 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
             </button>
           </div>
         )}
-
-        {/* Bulk Actions */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleSelectAll}
-            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-          >
-            Select All Visible ({filteredData.length})
-          </button>
-          <button
-            onClick={handleClearAll}
-            className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-          >
-            Clear Selection
-          </button>
-        </div>
       </div>
 
       {/* Table */}
@@ -411,7 +408,7 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
             {table.getRowModel().rows.map(row => (
               <tr 
                 key={row.id} 
-                className={`hover:bg-gray-50 ${row.getIsSelected() ? 'bg-blue-50' : ''}`}
+                className={`hover:bg-gray-50 ${selectedInteractions.some(selected => selected.id === row.original.id) ? 'bg-blue-50' : ''}`}
               >
                 {row.getVisibleCells().map(cell => (
                   <td
@@ -436,9 +433,9 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
             {globalFilter && ` (filtered by "${globalFilter}")`}
           </div>
           <div>
-            {Object.keys(rowSelection).length > 0 && (
+            {selectedInteractions.length > 0 && (
               <span className="text-blue-600 font-medium">
-                {Object.keys(rowSelection).length} selected for diagram
+                {selectedInteractions.length} selected for diagram
               </span>
             )}
           </div>

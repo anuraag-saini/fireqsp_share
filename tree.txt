@@ -23,9 +23,15 @@ C:.
 |   |   +---extract
 |   |   |       route.ts
 |   |   |       
-|   |   \---stripe
-|   |       \---create-checkout
-|   |               route.ts
+|   |   +---extract-stream
+|   |   |       route.ts
+|   |   |
+|   |   +---stripe
+|   |   |   \---create-checkout
+|   |   |            route.ts
+|   |   |
+|   |   \---test-supabase
+|   |          route.ts
 |   |               
 |   +---dashboard
 |   |       page.tsx
@@ -42,14 +48,23 @@ C:.
 |               page.tsx
 |               
 +---components
+|       DashboardLayout.tsx
 |       DiagramViewer.tsx
 |       InteractionTable.tsx
 |       Navigation.tsx
 |       PDFUploader.tsx
 |       
++---hooks
+|       useExtractionProgress.ts
+|
 +---lib
+|       brand-config.ts
+|       extraction.ts
+|       pdf-processing.ts
 |       stripe-config.ts
 |       stripe.ts
+|       supabase-utils.ts
+|       supabase.ts
 |       
 +---public
 |       file.svg
