@@ -139,14 +139,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
-    const diffTime = Math.abs(now.getTime() - date.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    // Reset hours to compare just the dates
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const compareDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
     
-    if (diffDays === 1) return 'Today'
-    if (diffDays === 2) return 'Yesterday'
-    if (diffDays <= 7) return `${diffDays - 1} days ago`
+    const diffTime = today.getTime() - compareDate.getTime()
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+    
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays <= 7) return `${diffDays} days ago`
+    if (diffDays <= 30) return `${Math.floor(diffDays / 7)} weeks ago`
+    
     return date.toLocaleDateString()
-  }
+    }
 
   const getStatusColor = (status: string) => {
     switch (status) {

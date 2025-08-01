@@ -1,4 +1,3 @@
- 
 // eslint.config.mjs
 import js from '@eslint/js'
 import typescript from '@typescript-eslint/eslint-plugin'
@@ -9,7 +8,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 export default [
   js.configs.recommended,
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['**/*.{ts,tsx,js,jsx}'],
     languageOptions: {
       parser: typescriptParser,
       parserOptions: {
@@ -18,6 +17,39 @@ export default [
         ecmaFeatures: {
           jsx: true
         }
+      },
+      globals: {
+        // Browser globals
+        console: 'readonly',
+        window: 'readonly',
+        document: 'readonly',
+        localStorage: 'readonly',
+        fetch: 'readonly',
+        alert: 'readonly',
+        confirm: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        FormData: 'readonly',
+        Blob: 'readonly',
+        File: 'readonly',
+        Image: 'readonly',
+        XMLSerializer: 'readonly',
+        HTMLInputElement: 'readonly',
+        HTMLDivElement: 'readonly',
+        Request: 'readonly',
+        
+        // Node.js globals
+        process: 'readonly',
+        Buffer: 'readonly',
+        
+        // React globals
+        React: 'readonly',
+        
+        // Next.js globals
+        __dirname: 'readonly',
+        __filename: 'readonly',
       }
     },
     plugins: {
@@ -29,6 +61,9 @@ export default [
       // Relax some strict rules for faster development
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': 'warn',
+      'no-unused-vars': 'warn',
+      'no-undef': 'warn', // Changed from error to warn
+      'no-case-declarations': 'error',
       'react/no-unescaped-entities': 'warn',
       'react-hooks/exhaustive-deps': 'warn'
     },

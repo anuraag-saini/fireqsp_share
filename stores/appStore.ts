@@ -117,14 +117,17 @@ export const useAppStore = create<AppState>()(
         console.log('AppStore: Setting current step:', currentStep)
         set({ currentStep })
       },
-      
+
       clearAll: () => {
-        console.log('AppStore: Clearing all data')
+        // Clear localStorage completely
+        localStorage.removeItem('fireqsp-app-storage')
+        localStorage.removeItem('fireqsp_current_user_id')
+        
         set({
           interactions: [],
           selectedInteractions: [],
           references: {},
-          currentStep: 'upload'
+          currentStep: 'upload',
         })
       },
       

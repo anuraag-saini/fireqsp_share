@@ -31,6 +31,21 @@ export default function Dashboard() {
     }
   }, [isLoaded, isSignedIn, router])
 
+  useEffect(() => {
+    // Clear store data when user changes (new signup)
+    if (user?.id) {
+      const storedUserId = localStorage.getItem('fireqsp_current_user_id')
+      
+      if (storedUserId !== user.id) {
+        console.log('New user detected, clearing stored data')
+        // Clear all app data for new user
+        clearAll()
+        // Store current user ID
+        localStorage.setItem('fireqsp_current_user_id', user.id)
+      }
+    }
+  }, [user?.id, clearAll])
+
   
   // Add this useEffect after your existing ones
   // Replace the getUserLimits import and usage with this:
