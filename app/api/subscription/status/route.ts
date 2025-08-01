@@ -19,12 +19,12 @@ export async function GET() {
     
     // If user doesn't exist, create trial
     if (!existing) {
-      // await supabaseAdmin
-      //   .from('user_subscriptions')
-      //   .insert({
-      //     user_id: userId,
-      //     plan_type: 'trial'
-      //   })
+      await supabaseAdmin
+        .from('user_subscriptions')
+        .insert({
+          user_id: userId,
+          plan_type: 'trial'
+        })
       
       // await supabaseAdmin
       //   .from('user_usage')
