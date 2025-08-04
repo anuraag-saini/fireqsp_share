@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
         },
       ],
       mode: 'subscription',
-      success_url: successUrl || `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: cancelUrl || `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pricing?canceled=true`,
+      success_url: successUrl || `${process.env.NEXT_PUBLIC_APP_URL || 'https://fireqsp.com'}/dashboard?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: cancelUrl || `${process.env.NEXT_PUBLIC_APP_URL || 'https://fireqsp.com'}/pricing?canceled=true`,
       customer_email: userEmail,
       metadata: {
         userEmail: userEmail,
