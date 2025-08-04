@@ -1,8 +1,8 @@
-// components/AdminActivity.tsx
+// components/AdminActivity.tsx - Fixed ESLint errors
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Activity, User, FileText, AlertCircle, CheckCircle, Clock, RefreshCw } from 'lucide-react'
+import { Activity, User, AlertCircle, CheckCircle, Clock, RefreshCw } from 'lucide-react'
 
 interface ActivityItem {
   id: string
@@ -24,8 +24,8 @@ export function AdminActivity() {
     fetchActivity()
     
     // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchActivity, 30000)
-    return () => clearInterval(interval)
+    const interval = window.setInterval(fetchActivity, 30000)
+    return () => window.clearInterval(interval)
   }, [])
 
   const fetchActivity = async () => {

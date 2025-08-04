@@ -1,14 +1,14 @@
-// app/api/admin/activity/route.ts - Fixed to match your working pattern
-import { NextRequest, NextResponse } from 'next/server'
+// app/api/admin/activity/route.ts - Fixed ESLint errors
+import { NextResponse } from 'next/server'
 import { currentUser } from '@clerk/nextjs/server'
-import { supabaseAdmin } from '@/lib/supabase'  // Using supabaseAdmin like your working routes
+import { supabaseAdmin } from '@/lib/supabase'
 
 const ADMIN_EMAILS = [
   'asaini.anuraags@gmail.com',
   'admin@fireqsp.com'
 ]
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     console.log('📈 Admin activity API called')
     

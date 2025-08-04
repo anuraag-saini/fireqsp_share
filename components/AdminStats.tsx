@@ -1,10 +1,10 @@
-// components/AdminStats.tsx
+// components/AdminStats.tsx - Fixed ESLint errors
 'use client'
 
 import { useEffect, useState } from 'react'
 import { Users, Activity, DollarSign, AlertTriangle, TrendingUp, FileText } from 'lucide-react'
 
-interface AdminStats {
+interface AdminStatsData {
   totalUsers: number
   activeUsers: number
   totalExtractions: number
@@ -16,7 +16,7 @@ interface AdminStats {
 }
 
 export function AdminStats() {
-  const [stats, setStats] = useState<AdminStats | null>(null)
+  const [stats, setStats] = useState<AdminStatsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 

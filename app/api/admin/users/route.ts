@@ -1,14 +1,14 @@
-// app/api/admin/users/route.ts - Fixed to match your working pattern
+// app/api/admin/users/route.ts - Fixed ESLint errors
 import { NextRequest, NextResponse } from 'next/server'
 import { currentUser } from '@clerk/nextjs/server'
-import { supabaseAdmin } from '@/lib/supabase'  // Using supabaseAdmin like your working routes
+import { supabaseAdmin } from '@/lib/supabase'
 
 const ADMIN_EMAILS = [
   'asaini.anuraags@gmail.com',
   'admin@fireqsp.com'
 ]
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     console.log('👥 Admin users API called')
     
@@ -126,28 +126,31 @@ export async function POST(request: NextRequest) {
     console.log(`🔧 Admin action: ${action} for user: ${userId}`)
 
     switch (action) {
-      case 'suspend':
+      case 'suspend': {
         await supabaseAdmin
           .from('user_subscriptions')
           .update({ status: 'suspended' })
           .eq('user_id', userId)
         break
+      }
 
-      case 'activate':
+      case 'activate': {
         await supabaseAdmin
           .from('user_subscriptions')
           .update({ status: 'active' })
           .eq('user_id', userId)
         break
+      }
 
-      case 'delete':
+      case 'delete': {
         await supabaseAdmin
           .from('user_subscriptions')
           .update({ status: 'deleted' })
           .eq('user_id', userId)
         break
+      }
 
-      case 'view':
+      case 'view': {
         const { data: userDetails } = await supabaseAdmin
           .from('user_subscriptions')
           .select('*')
@@ -165,6 +168,7 @@ export async function POST(request: NextRequest) {
           user: userDetails,
           extractions: userExtractions || []
         })
+      }
 
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
