@@ -26,12 +26,12 @@ export async function GET() {
           plan_type: 'trial'
         })
       
-      // await supabaseAdmin
-      //   .from('user_usage')
-      //   .insert({
-      //     user_id: userId,
-      //     extraction_count: 0
-      //   })
+      await supabaseAdmin
+        .from('user_usage')
+        .insert({
+          user_id: userId,
+          extraction_count: 0
+        })
       
       return NextResponse.json({ 
         plan: 'trial', 
