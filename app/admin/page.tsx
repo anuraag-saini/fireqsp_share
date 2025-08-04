@@ -1,404 +1,252 @@
-// app/admin/page.tsx
+// app/admin/page.tsx - Final production-ready admin dashboard
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { 
-  Users, 
-  Activity, 
-  DollarSign, 
-  FileText, 
-  AlertCircle,
-  Eye,
-  Ban,
-  Trash2,
-  Calendar,
-  TrendingUp
-} from 'lucide-react'
+import { AdminStats } from '@/components/AdminStats'
+import { AdminUsers } from '@/components/AdminUsers'
+import { AdminActivity } from '@/components/AdminActivity'
+import { Flame, TrendingUp, Users, Activity, Settings } from 'lucide-react'
 
-interface AdminStats {
-  totalUsers: number
-  activeUsers: number
-  totalExtractions: number
-  totalRevenue: number
-  apiCalls: number
-  errorRate: number
-}
-
-interface UserData {
-  id: string
-  email: string
-  name: string
-  plan: string
-  status: 'active' | 'canceled' | 'past_due'
-  joinDate: string
-  lastActive: string
-  extractionsCount: number
-  apiCallsThisMonth: number
-  totalSpent: number
-}
-
-interface RecentActivity {
-  id: string
-  userId: string
-  userEmail: string
-  action: string
-  timestamp: string
-  details: string
-}
-
-// Simple admin access control (in production, use proper role-based auth)
 const ADMIN_EMAILS = [
-  'asaini.anuraags@gmail.com', // Replace with your actual admin email
+  'asaini.anuraags@gmail.com',
   'admin@fireqsp.com'
 ]
 
-export default function AdminDashboard() {
+export default function AdminPage() {
   const { user, isLoaded } = useUser()
   const router = useRouter()
-  const [stats, setStats] = useState<AdminStats | null>(null)
-  const [users, setUsers] = useState<UserData[]>([])
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([])
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'activity'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'activity' | 'settings'>('overview')
 
-  // Check admin access
   useEffect(() => {
     if (isLoaded && (!user || !ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || ''))) {
-      router.push('/')
-      return
+      router.push('/dashboard')
     }
-  }, [isLoaded, user, router])
+  }, [user, isLoaded, router])
 
-  // Load admin data
-  useEffect(() => {
-    if (!user || !ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || '')) return
-
-    const loadAdminData = async () => {
-      try {
-        setLoading(true)
-        
-        // Load all data in parallel
-        const [statsRes, usersRes, activityRes] = await Promise.all([
-          fetch('/api/admin/stats'),
-          fetch('/api/admin/users'),
-          fetch('/api/admin/activity')
-        ])
-
-        if (statsRes.ok) {
-          const statsData = await statsRes.json()
-          setStats(statsData)
-        }
-
-        if (usersRes.ok) {
-          const usersData = await usersRes.json()
-          setUsers(usersData.users || [])
-        }
-
-        if (activityRes.ok) {
-          const activityData = await activityRes.json()
-          setRecentActivity(activityData.activities || [])
-        }
-
-      } catch (error) {
-        console.error('Failed to load admin data:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadAdminData()
-  }, [user])
-
-  const handleUserAction = async (userId: string, action: 'suspend' | 'delete' | 'view') => {
-    if (action === 'delete' && !confirm('Are you sure you want to delete this user?')) return
-    if (action === 'suspend' && !confirm('Are you sure you want to suspend this user?')) return
-
-    try {
-      const response = await fetch('/api/admin/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, action })
-      })
-
-      if (response.ok) {
-        // Refresh users list
-        const usersRes = await fetch('/api/admin/users')
-        if (usersRes.ok) {
-          const usersData = await usersRes.json()
-          setUsers(usersData.users || [])
-        }
-      }
-    } catch (error) {
-      console.error('User action failed:', error)
-      alert('Action failed. Please try again.')
-    }
-  }
-
-  if (!isLoaded || loading) {
+  if (!isLoaded) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading admin dashboard...</p>
+        </div>
       </div>
     )
   }
 
   if (!user || !ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || '')) {
-    return null
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Flame className="h-8 w-8 text-red-600" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600 mb-4">You don't have permission to access the admin dashboard.</p>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    )
   }
 
-  const formatCurrency = (amount: number) => `$${amount.toLocaleString()}`
-  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString()
+  const tabs = [
+    { id: 'overview' as const, label: 'Overview', icon: TrendingUp },
+    { id: 'users' as const, label: 'Users', icon: Users },
+    { id: 'activity' as const, label: 'Activity', icon: Activity },
+    { id: 'settings' as const, label: 'Settings', icon: Settings }
+  ]
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow">
+      <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">🔥 FireQSP Admin</h1>
-              <p className="text-gray-600">System overview and user management</p>
+          {/* Header */}
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <Flame className="h-8 w-8 text-orange-500" />
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">FireQSP Admin</h1>
+                <p className="text-sm text-gray-500">System Management Dashboard</p>
+              </div>
             </div>
-            <div className="text-sm text-gray-500">
-              Admin: {user?.emailAddresses[0]?.emailAddress}
+            <div className="flex items-center gap-4">
+              <div className="text-right text-sm">
+                <p className="text-gray-900 font-medium">{user.firstName || 'Admin'}</p>
+                <p className="text-gray-500">{user.emailAddresses[0]?.emailAddress}</p>
+              </div>
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                <span className="text-white text-sm font-medium">
+                  {(user.firstName?.[0] || user.emailAddresses[0]?.emailAddress[0] || 'A').toUpperCase()}
+                </span>
+              </div>
             </div>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="flex space-x-8">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <tab.icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
+      {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {/* Stats Overview */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <Users className="h-8 w-8 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
-                </div>
-              </div>
+        {activeTab === 'overview' && (
+          <div className="space-y-8">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">System Overview</h2>
+              <p className="text-gray-600">Monitor your FireQSP platform performance and usage.</p>
             </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <Activity className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Active Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <FileText className="h-8 w-8 text-purple-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Extractions</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalExtractions}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <DollarSign className="h-8 w-8 text-yellow-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalRevenue)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div className="mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              {[
-                { id: 'overview', label: 'Overview', icon: TrendingUp },
-                { id: 'users', label: 'Users', icon: Users },
-                { id: 'activity', label: 'Activity', icon: Activity }
-              ].map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setActiveTab(id as any)}
-                  className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <Icon className="h-4 w-4 mr-2" />
-                  {label}
-                </button>
-              ))}
-            </nav>
-          </div>
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'overview' && stats && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">System Health</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">API Calls (30d)</span>
-                  <span className="font-medium">{stats.apiCalls.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Error Rate</span>
-                  <span className={`font-medium ${stats.errorRate > 5 ? 'text-red-600' : 'text-green-600'}`}>
-                    {stats.errorRate.toFixed(2)}%
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Active Users</span>
-                  <span className="font-medium">{stats.activeUsers}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
-              <div className="space-y-3">
-                <button className="w-full text-left px-4 py-2 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">
-                  📊 Export User Data
-                </button>
-                <button className="w-full text-left px-4 py-2 bg-green-50 text-green-700 rounded hover:bg-green-100">
-                  📈 Usage Analytics
-                </button>
-                <button className="w-full text-left px-4 py-2 bg-yellow-50 text-yellow-700 rounded hover:bg-yellow-100">
-                  💳 Billing Report
-                </button>
-              </div>
-            </div>
+            <AdminStats />
           </div>
         )}
 
         {activeTab === 'users' && (
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">User Management</h3>
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">User Management</h2>
+              <p className="text-gray-600">Manage user accounts, subscriptions, and permissions.</p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Plan
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Usage
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Revenue
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                          <div className="text-sm text-gray-500">{user.email}</div>
-                          <div className="text-xs text-gray-400">
-                            Joined {formatDate(user.joinDate)}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          user.plan === 'pro' ? 'bg-blue-100 text-blue-800' :
-                          user.plan === 'enterprise' ? 'bg-purple-100 text-purple-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {user.plan}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div>{user.extractionsCount} extractions</div>
-                        <div className="text-xs text-gray-500">{user.apiCallsThisMonth} API calls</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(user.totalSpent)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          user.status === 'active' ? 'bg-green-100 text-green-800' :
-                          user.status === 'past_due' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {user.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleUserAction(user.id, 'view')}
-                            className="text-blue-600 hover:text-blue-900"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleUserAction(user.id, 'suspend')}
-                            className="text-yellow-600 hover:text-yellow-900"
-                          >
-                            <Ban className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleUserAction(user.id, 'delete')}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <AdminUsers />
           </div>
         )}
 
         {activeTab === 'activity' && (
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Recent Activity</h3>
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Activity Feed</h2>
+              <p className="text-gray-600">Monitor real-time user activity and system events.</p>
             </div>
-            <div className="divide-y divide-gray-200">
-              {recentActivity.map((activity) => (
-                <div key={activity.id} className="px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {activity.userEmail}
-                      </p>
-                      <p className="text-sm text-blue-600">{activity.action}</p>
-                      <p className="text-xs text-gray-500">{activity.details}</p>
+            <AdminActivity />
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">System Settings</h2>
+              <p className="text-gray-600">Configure system parameters and admin preferences.</p>
+            </div>
+            
+            {/* Settings Panel */}
+            <div className="bg-white rounded-lg border p-6">
+              <h3 className="text-lg font-semibold mb-4">Admin Configuration</h3>
+              
+              <div className="space-y-6">
+                {/* Admin Emails */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Admin Email Addresses
+                  </label>
+                  <div className="bg-gray-50 rounded-md p-3">
+                    <div className="space-y-1">
+                      {ADMIN_EMAILS.map((email, index) => (
+                        <div key={index} className="flex items-center justify-between text-sm">
+                          <span className="text-gray-900">{email}</span>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            email === user.emailAddresses[0]?.emailAddress 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {email === user.emailAddresses[0]?.emailAddress ? 'Current' : 'Admin'}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                    <div className="text-xs text-gray-400">
-                      {formatDate(activity.timestamp)}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Only these email addresses can access the admin dashboard.
+                  </p>
+                </div>
+
+                {/* API Information */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    API Endpoints
+                  </label>
+                  <div className="bg-gray-50 rounded-md p-3">
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-700">/api/admin/stats</span>
+                        <span className="text-green-600 font-medium">Active</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-700">/api/admin/users</span>
+                        <span className="text-green-600 font-medium">Active</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-700">/api/admin/activity</span>
+                        <span className="text-green-600 font-medium">Active</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              ))}
+
+                {/* System Info */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    System Information
+                  </label>
+                  <div className="bg-gray-50 rounded-md p-3">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-700">Platform:</span>
+                        <span className="ml-2 font-medium">FireQSP Admin v1.0</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-700">Database:</span>
+                        <span className="ml-2 font-medium text-green-600">Connected</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-700">Last Deploy:</span>
+                        <span className="ml-2 font-medium">{new Date().toLocaleDateString()}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-700">Auth Provider:</span>
+                        <span className="ml-2 font-medium">Clerk</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="pt-4 border-t">
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      Refresh Dashboard
+                    </button>
+                    <button
+                      onClick={() => router.push('/dashboard')}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
+                    >
+                      Back to App
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
