@@ -13,7 +13,7 @@ export default function Home() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [typingSpeed, setTypingSpeed] = useState(150)
 
-  const words = ['RareDiseases', 'Oncology', 'Immunology']
+  const words = ['Rare Diseases', 'Oncology', 'AutoImmune Diseases', 'Metabolic Diseases']
 
   useEffect(() => {
     const type = () => {
