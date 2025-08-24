@@ -251,8 +251,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
             <div className="animate-spin rounded-full h-8 w-8 border-b-3 border-blue-600"></div>
             <div className="text-blue-700 text-sm font-medium">
               Processing {files.length} file{files.length !== 1 ? 's' : ''}... 
-              <p className="text-gray-600">This may take a few minutes</p>
-              <p className="text-gray-600">You may leave and come back later</p>
+              <p className="text-gray-600">This may take a few minutes. Do not close/refresh this page.</p>
             </div>
           </div>
         )}
