@@ -84,6 +84,23 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
       setError('Extractions limit reached. Please upgrade your plan.')
       return
     }
+    // File size validation - ADDED THIS
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
+    const MAX_TOTAL_SIZE = 20 * 1024 * 1024; // 20MB total
+    
+    let totalSize = 0;
+    for (const { file } of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        setError(`File "${file.name}" is too large. Maximum size is 5MB per file.`);
+        return;
+      }
+      totalSize += file.size;
+    }
+    
+    if (totalSize > MAX_TOTAL_SIZE) {
+      setError('Total file size too large. Maximum is 15MB total.');
+      return;
+    }
 
     setIsExtracting(true)
     setError(null)
@@ -106,6 +123,9 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
       })
 
       if (!response.ok) {
+        if (response.status === 413) {
+          throw new Error('Files too large. Try smaller PDF files or fewer files.')
+        }
         throw new Error('Extraction failed')
       }
 
