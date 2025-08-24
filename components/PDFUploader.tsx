@@ -45,6 +45,8 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractionResults, setExtractionResults] = useState<ExtractionResults | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [isUploading, setIsUploading] = useState(false)
 
   useEffect(() => {
     const checkLimits = async () => {
@@ -76,6 +78,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
     setFiles(prev => prev.filter(f => f.id !== id))
   }
 
+  // updated version of hanle extraction with porgress bar
   const handleExtraction = async () => {
     if (files.length === 0) return
 
@@ -84,25 +87,27 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
       setError('Extractions limit reached. Please upgrade your plan.')
       return
     }
-    // File size validation - ADDED THIS
-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 5MB per file
-    const MAX_TOTAL_SIZE = 40 * 1024 * 1024; // 20MB total
+
+    // File size validation
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file  
+    const MAX_TOTAL_SIZE = 40 * 1024 * 1024; // 40MB total
     
     let totalSize = 0;
     for (const { file } of files) {
       if (file.size > MAX_FILE_SIZE) {
-        setError(`File "${file.name}" is too large. Maximum size is 5MB per file.`);
+        setError(`File "${file.name}" is too large. Maximum size is 10MB per file.`);
         return;
       }
       totalSize += file.size;
     }
     
     if (totalSize > MAX_TOTAL_SIZE) {
-      setError('Total file size too large. Maximum is 15MB total.');
+      setError('Total file size too large. Maximum is 40MB total.');
       return;
     }
 
-    setIsExtracting(true)
+    setIsUploading(true)
+    setUploadProgress(0)
     setError(null)
     setExtractionResults(null)
 
@@ -117,9 +122,42 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
       }
       formData.append('diseaseType', diseaseType)
 
-      const response = await fetch('/api/extract', {
-        method: 'POST',
-        body: formData
+      // Create XMLHttpRequest for progress tracking
+      const xhr = new XMLHttpRequest()
+      
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100)
+          setUploadProgress(progress)
+        }
+      })
+
+      // Handle response
+      const response = await new Promise<Response>((resolve, reject) => {
+        xhr.onload = () => {
+          setIsUploading(false)
+          setIsExtracting(true)
+          setUploadProgress(100)
+          
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve({
+              ok: xhr.status >= 200 && xhr.status < 300,
+              status: xhr.status,
+              json: () => Promise.resolve(JSON.parse(xhr.responseText))
+            } as Response)
+          } else {
+            reject(new Error(`HTTP ${xhr.status}`))
+          }
+        }
+        
+        xhr.onerror = () => {
+          setIsUploading(false)
+          reject(new Error('Network error'))
+        }
+        
+        xhr.open('POST', '/api/extract')
+        xhr.send(formData)
       })
 
       if (!response.ok) {
@@ -136,7 +174,9 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extraction failed')
     } finally {
+      setIsUploading(false)
       setIsExtracting(false)
+      setUploadProgress(0)
     }
   }
 
@@ -241,6 +281,24 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
               onChange={handleFileChange}
               className="hidden"
             />
+          </div>
+        )}
+
+        {/* Upload Progress */}
+        {isUploading && (
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-3xl">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="animate-pulse rounded-full h-6 w-6 bg-blue-500"></div>
+              <div className="text-blue-700 text-sm font-medium">
+                Uploading files... {uploadProgress}%
+              </div>
+            </div>
+            <div className="w-full bg-blue-200 rounded-full h-2">
+              <div 
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                style={{ width: `${uploadProgress}%` }}
+              ></div>
+            </div>
           </div>
         )}
 
