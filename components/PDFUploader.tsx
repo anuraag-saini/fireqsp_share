@@ -78,7 +78,6 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
     setFiles(prev => prev.filter(f => f.id !== id))
   }
 
-  // updated version of hanle extraction with porgress bar
   const handleExtraction = async () => {
     if (files.length === 0) return
 
@@ -136,13 +135,9 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
       // Handle response
       const response = await new Promise<Response>((resolve, reject) => {
         xhr.onload = () => {
-          setIsUploading(false)
-          setIsExtracting(true)
-          setUploadProgress(100)
-          
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve({
-              ok: xhr.status >= 200 && xhr.status < 300,
+              ok: true,
               status: xhr.status,
               json: () => Promise.resolve(JSON.parse(xhr.responseText))
             } as Response)
@@ -152,13 +147,16 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
         }
         
         xhr.onerror = () => {
-          setIsUploading(false)
           reject(new Error('Network error'))
         }
         
         xhr.open('POST', '/api/extract')
         xhr.send(formData)
       })
+
+      // Set states after successful upload
+      setIsUploading(false)
+      setIsExtracting(true)
 
       if (!response.ok) {
         if (response.status === 413) {
