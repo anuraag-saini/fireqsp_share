@@ -85,8 +85,8 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
       return
     }
     // File size validation - ADDED THIS
-    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
-    const MAX_TOTAL_SIZE = 20 * 1024 * 1024; // 20MB total
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 5MB per file
+    const MAX_TOTAL_SIZE = 40 * 1024 * 1024; // 20MB total
     
     let totalSize = 0;
     for (const { file } of files) {

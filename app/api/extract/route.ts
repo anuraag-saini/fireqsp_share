@@ -6,6 +6,8 @@ import { SupabaseExtraction } from '@/lib/supabase-utils'
 import { Interaction } from '@/lib/prompts'
 import { incrementUserExtraction } from '@/lib/usage-tracking'
 
+// Add these lines after your imports
+export const runtime = 'nodejs'
 export const maxDuration = 300; // 5 minutes timeout
 export const dynamic = 'force-dynamic';
 
