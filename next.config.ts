@@ -4,13 +4,11 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['pdf-parse'],
   experimental: {
     serverComponentsExternalPackages: ['pdf-parse'],
-  },
-  // Add this to handle larger file uploads
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb',
-    },
-  },
+    // This is the correct way for Next.js 15+
+    serverActions: {
+      bodySizeLimit: '50mb'
+    }
+  }
 };
 
 export default nextConfig;
