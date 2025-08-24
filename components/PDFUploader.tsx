@@ -252,14 +252,14 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleExtraction}
-                disabled={files.length === 0}
+                disabled={files.length === 0 || isUploading}
                 className="px-4 py-2 rounded-2xl text-xs font-medium transition-colors duration-200 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: files.length === 0 ? brandConfig.colors.secondary[200] : brandConfig.colors.primary[500],
-                  color: files.length === 0 ? brandConfig.colors.secondary[400] : 'white'
+                  backgroundColor: files.length === 0 || isUploading ? brandConfig.colors.secondary[200] : brandConfig.colors.primary[500],
+                  color: files.length === 0 || isUploading ? brandConfig.colors.secondary[400] : 'white'
                 }}
               >
-                Process
+                {isUploading ? 'Uploading...' : 'Process'}
               </button>
               
               {files.length > 0 && (
