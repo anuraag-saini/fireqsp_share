@@ -45,8 +45,6 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractionResults, setExtractionResults] = useState<ExtractionResults | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [isUploading, setIsUploading] = useState(false)
 
   useEffect(() => {
     const checkLimits = async () => {
@@ -105,8 +103,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
       return;
     }
 
-    setIsUploading(true)
-    setUploadProgress(0)
+    setIsExtracting(true)
     setError(null)
     setExtractionResults(null)
 
@@ -121,42 +118,10 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
       }
       formData.append('diseaseType', diseaseType)
 
-      // Create XMLHttpRequest for progress tracking
-      const xhr = new XMLHttpRequest()
-      
-      // Track upload progress
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100)
-          setUploadProgress(progress)
-        }
+      const response = await fetch('/api/extract', {
+        method: 'POST',
+        body: formData
       })
-
-      // Handle response
-      const response = await new Promise<Response>((resolve, reject) => {
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve({
-              ok: true,
-              status: xhr.status,
-              json: () => Promise.resolve(JSON.parse(xhr.responseText))
-            } as Response)
-          } else {
-            reject(new Error(`HTTP ${xhr.status}`))
-          }
-        }
-        
-        xhr.onerror = () => {
-          reject(new Error('Network error'))
-        }
-        
-        xhr.open('POST', '/api/extract')
-        xhr.send(formData)
-      })
-
-      // Set states after successful upload
-      setIsUploading(false)
-      setIsExtracting(true)
 
       if (!response.ok) {
         if (response.status === 413) {
@@ -172,9 +137,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extraction failed')
     } finally {
-      setIsUploading(false)
       setIsExtracting(false)
-      setUploadProgress(0)
     }
   }
 
@@ -250,14 +213,14 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleExtraction}
-                disabled={files.length === 0 || isUploading}
+                disabled={files.length === 0}
                 className="px-4 py-2 rounded-2xl text-xs font-medium transition-colors duration-200 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: files.length === 0 || isUploading ? brandConfig.colors.secondary[200] : brandConfig.colors.primary[500],
-                  color: files.length === 0 || isUploading ? brandConfig.colors.secondary[400] : 'white'
+                  backgroundColor: files.length === 0? brandConfig.colors.secondary[200] : brandConfig.colors.primary[500],
+                  color: files.length === 0 ? brandConfig.colors.secondary[400] : 'white'
                 }}
               >
-                {isUploading ? 'Uploading...' : 'Process'}
+                Process
               </button>
               
               {files.length > 0 && (
@@ -279,24 +242,6 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
               onChange={handleFileChange}
               className="hidden"
             />
-          </div>
-        )}
-
-        {/* Upload Progress */}
-        {isUploading && (
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-3xl">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="animate-pulse rounded-full h-6 w-6 bg-blue-500"></div>
-              <div className="text-blue-700 text-sm font-medium">
-                Uploading files... {uploadProgress}%
-              </div>
-            </div>
-            <div className="w-full bg-blue-200 rounded-full h-2">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                style={{ width: `${uploadProgress}%` }}
-              ></div>
-            </div>
           </div>
         )}
 
