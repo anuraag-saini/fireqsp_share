@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { UserButton, useUser } from '@clerk/nextjs'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/stores/appStore'
 import { brandConfig } from '@/lib/brand-config'
 
@@ -13,7 +14,9 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  Trash2
+  Trash2,
+  Clock,
+  RefreshCw
 } from 'lucide-react'
 
 interface ExtractionHistory {
@@ -32,13 +35,18 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user } = useUser()
+  const router = useRouter()
   const [userLimits, setUserLimits] = useState<any>(null)
   const { currentStep, clearAll, setCurrentStep, setExtractionResults } = useAppStore()
   const [extractionHistory, setExtractionHistory] = useState<ExtractionHistory[]>([])
   const [isHistoryLoading, setIsHistoryLoading] = useState(true)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  
+  // Active Jobs State
+  const [activeJobs, setActiveJobs] = useState([])
+  const [isJobsLoading, setIsJobsLoading] = useState(false)
+  const [showActiveJobs, setShowActiveJobs] = useState(false)
 
-  // Replace the getUserLimits import and usage with this:
   useEffect(() => {
     const checkLimits = async () => {
         try {
@@ -80,6 +88,27 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     loadHistory()
   }, [user?.id])
 
+  // Load active jobs - only when requested
+  const loadActiveJobs = async () => {
+    if (!user?.id) return
+    
+    try {
+      setIsJobsLoading(true)
+      const response = await fetch('/api/jobs/active')
+      
+      if (response.ok) {
+        const jobs = await response.json()
+        setActiveJobs(jobs)
+      } else {
+        console.error('Failed to load active jobs:', response.statusText)
+      }
+    } catch (error) {
+      console.error('Failed to load active jobs:', error)
+    } finally {
+      setIsJobsLoading(false)
+    }
+  }
+
   const handleNewExtraction = () => {
     clearAll()
     setCurrentStep('upload')
@@ -110,7 +139,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   const handleDeleteExtraction = async (extractionId: string, event: React.MouseEvent) => {
-    event.stopPropagation() // Prevent triggering the load action
+    event.stopPropagation() 
     
     if (!confirm('Are you sure you want to delete?')) return
     
@@ -135,7 +164,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }
 
-  // ... rest of the component remains the same (formatDate, getStatusColor, etc.)
+  const handleToggleActiveJobs = () => {
+    if (!showActiveJobs) {
+      setShowActiveJobs(true)
+      loadActiveJobs()
+    } else {
+      setShowActiveJobs(false)
+    }
+  }
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
@@ -153,7 +190,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     if (diffDays <= 30) return `${Math.floor(diffDays / 7)} weeks ago`
     
     return date.toLocaleDateString()
-    }
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -173,10 +210,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }
 
-  // ... rest of the JSX remains exactly the same
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Sidebar - same as before */}
+      {/* Sidebar */}
       <div className={`bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
         isSidebarCollapsed ? 'w-16' : 'w-80'
       }`}>
@@ -184,25 +220,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Sidebar Header */}
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
-            {/* <Link
-              href="/"
-              className="flex items-center px-3 py-2 text-gray-700 rounded-lg"
-            >
-              {!isSidebarCollapsed && (
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">🔥 FireQSP</h1>
-              </div>
-            )}
-            </Link> */}
-
             <Link href="/" className="text-2xl font-bold" style={{ color: brandConfig.colors.primary[600] }}>
             {!isSidebarCollapsed && (
               <div>
                 🔥 FireQSP
               </div>
             )}
-            
-          </Link>
+            </Link>
 
             <button
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -216,7 +240,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Navigation */}
         <div className="p-4 border-b border-gray-200">
           <div className="space-y-2">
-                       
             <button
               onClick={handleNewExtraction}
               className="w-full flex items-center px-1 py-1 text-blue-600 hover:bg-blue-50 rounded-lg">
@@ -307,41 +330,80 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
         </div>
 
-        {userLimits?.plan === 'expired' && (
-            <div className="bg-red-50 border-b border-red-200 px-6 py-3">
-                <div className="flex justify-between items-center">
-                <div>
-                    <p className="text-sm text-red-800">
-                    🚨 Trial expired. Limited to 1 PDF per extraction.
-                    </p>
-                </div>
-                <button
-                    onClick={() => window.location.href = '/pricing'}
-                    className="px-4 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
-                >
-                    Upgrade Now
-                </button>
-                </div>
-            </div>
-            )}
+        {/* Active Jobs Section - NEW */}
+        <div className="border-t border-gray-200">
+          <div className="p-4">
+            <button
+              onClick={handleToggleActiveJobs}
+              className="w-full flex items-center px-1 py-2 text-gray-600 hover:bg-gray-50 rounded-lg"
+            >
+              <Clock className="h-4 w-4" />
+              {!isSidebarCollapsed && <span className="ml-3">Active Jobs</span>}
+              {!isSidebarCollapsed && activeJobs.length > 0 && (
+                <span className="ml-auto bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                  {activeJobs.length}
+                </span>
+              )}
+            </button>
 
-            {userLimits?.plan === 'trial' && (
-            <div className="bg-blue-50 border-b border-blue-200 px-6 py-3">
-                <div className="flex justify-between items-center">
-                <div>
-                    <p className="text-sm text-blue-800">
-                    🎯 Free trial active. Upgrade anytime for unlimited access.
-                    </p>
+            {/* Active Jobs List */}
+            {showActiveJobs && !isSidebarCollapsed && (
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-500">ACTIVE JOBS</span>
+                  <button
+                    onClick={loadActiveJobs}
+                    disabled={isJobsLoading}
+                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  >
+                    <RefreshCw className={`h-3 w-3 text-gray-400 ${isJobsLoading ? 'animate-spin' : ''}`} />
+                  </button>
                 </div>
-                <button
-                    onClick={() => window.location.href = '/pricing'}
-                    className="px-4 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                >
-                    View Plans
-                </button>
-                </div>
-            </div>
-        )}
+
+                {isJobsLoading ? (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mx-auto"></div>
+                  </div>
+                ) : activeJobs.length === 0 ? (
+                  <p className="text-xs text-gray-500 py-2">No active jobs</p>
+                ) : (
+                  <div className="space-y-2">
+                    {activeJobs.map((job: any) => (
+                      <div
+                        key={job.id}
+                        onClick={() => router.push(`/dashboard/progress/${job.id}`)}
+                        className="p-2 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <p className="text-xs font-medium text-blue-900">
+                              {job.total_files} files
+                            </p>
+                            <p className="text-xs text-blue-700">
+                              {job.files_processed}/{job.total_files} processed
+                            </p>
+                            {job.interactions_found > 0 && (
+                              <p className="text-xs text-green-700">
+                                {job.interactions_found} interactions
+                              </p>
+                            )}
+                          </div>
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                            <div className="w-3 h-3 rounded-full bg-blue-600" 
+                                 style={{
+                                   transform: `scale(${job.total_files > 0 ? (job.files_processed / job.total_files) : 0})`
+                                 }}>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* User Section */}
         <div className="p-4 border-t border-gray-200">

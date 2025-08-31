@@ -5,6 +5,14 @@ import { extractInteractionsFromPages, extractReferencesFromPages, extractDiseas
 import { SupabaseExtraction } from '@/lib/supabase-utils'
 import { Interaction } from '@/lib/prompts'
 import { incrementUserExtraction } from '@/lib/usage-tracking'
+import { JobManager } from '@/lib/job-manager'
+import { FileStorage } from '@/lib/file-storage'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function POST(request: NextRequest) {
   let extraction: any = null
@@ -18,7 +26,6 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]
     const userEmail = formData.get('userEmail') as string
-    // const diseaseType = formData.get('diseaseType') as string || 'Others'
 
     if (!files.length) {
       return NextResponse.json(
@@ -29,7 +36,16 @@ export async function POST(request: NextRequest) {
 
     console.log(`Processing ${files.length} files for user: ${userEmail}`)
 
-    // Check simple cache first
+    // Check if we should use background processing
+    const shouldUseBackgroundProcessing = files.length > 3 || 
+      files.some((file: File) => file.size > 5 * 1024 * 1024) // > 5MB
+    
+    if (shouldUseBackgroundProcessing) {
+      console.log('Large upload detected, using background processing')
+      return await handleBackgroundProcessing(user, files, userEmail)
+    }
+
+    // Continue with synchronous processing for small uploads
     const cacheKey = createFilesHash(files)
     const cachedResult = SupabaseExtraction.getCachedResult(cacheKey)
     
@@ -45,7 +61,6 @@ export async function POST(request: NextRequest) {
     extraction = await SupabaseExtraction.createExtraction({
       user_id: user.id,
       title: 'Processing...',
-      //title: `Extraction - ${new Date().toLocaleDateString()}`,
       status: 'processing',
       file_count: files.length,
       interaction_count: 0,
@@ -54,7 +69,7 @@ export async function POST(request: NextRequest) {
       errors: null
     })
 
-    // Process all files together (simplified!)
+    // Process all files together
     const allPages: any[] = []
     const fileErrors: string[] = []
 
@@ -62,7 +77,6 @@ export async function POST(request: NextRequest) {
       try {
         console.log(`Processing file: ${file.name}`)
         const pages = await extractPagesFromPDF(file)
-        // Remove the filterReferencePages step - let AI handle it
         allPages.push(...pages)
         console.log(`Successfully processed ${file.name}: ${pages.length} pages`)
         
@@ -70,7 +84,6 @@ export async function POST(request: NextRequest) {
         const errorMessage = `Failed to process ${file.name}: ${error instanceof Error ? error.message : error}`
         console.error(errorMessage)
         fileErrors.push(errorMessage)
-        // Continue processing other files instead of stopping
       }
     }
 
@@ -88,12 +101,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`Total pages extracted: ${allPages.length}`)
-    // Extract disease type from content (NEW!)
     console.log('Extracting disease type from content...')
     const { diseaseType, errors: diseaseErrors } = await extractDiseaseTypeFromPages(allPages)
     console.log(`Detected disease type: ${diseaseType}`)
 
-    // Extract interactions and references (simplified - no progress callbacks)
     const { interactions, errors: interactionErrors } = await extractInteractionsFromPages(
       allPages,
       diseaseType
@@ -105,7 +116,6 @@ export async function POST(request: NextRequest) {
     
     console.log(`Extracted ${interactions.length} interactions`)
 
-    // Check if no interactions found
     if (interactions.length === 0) {
       await SupabaseExtraction.saveExtractionResults(
         extraction.id,
@@ -128,12 +138,10 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Save everything to database in one operation
-    // Create simple title: Disease (X files) - Date
+    // Create proper title with date
     const baseTitle = diseaseType && diseaseType !== 'General' ? diseaseType : 'Untitled'
-    const finalTitle = `${baseTitle} (${files.length} file${files.length > 1 ? 's' : ''}) - ${formatDateForTitle()}`
+    //const finalTitle = `${baseTitle} (${files.length} file${files.length > 1 ? 's' : ''}) - ${formatDateForTitle()}`
 
-    // Save everything to database 
     await SupabaseExtraction.saveExtractionResults(
       extraction.id,
       interactions,
@@ -141,19 +149,28 @@ export async function POST(request: NextRequest) {
       allErrors
     )
 
-    // Update the title
+    // Update title
     await SupabaseExtraction.updateExtraction(extraction.id, { 
-      title: finalTitle
+      title: baseTitle
     })
 
-    // Build clean result (no transformations needed!)
+    // Update disease_type in database
+    const { error: diseaseUpdateError } = await supabase
+      .from('extractions')
+      .update({ disease_type: diseaseType })
+      .eq('id', extraction.id)
+    
+    if (diseaseUpdateError) {
+      console.error('Failed to update disease_type:', diseaseUpdateError)
+    }
+
     const result = {
       extraction_id: extraction.id,
       interactions: interactions.map((interaction, index): Interaction => ({
         id: interaction.id || `interaction_${extraction.id}_${index}`,
         mechanism: interaction.mechanism,
-        source: interaction.source,  // Keep nested object as-is!
-        target: interaction.target,   // Keep nested object as-is!
+        source: interaction.source,
+        target: interaction.target,
         interaction_type: interaction.interaction_type,
         details: interaction.details,
         confidence: interaction.confidence || 'medium',
@@ -175,7 +192,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`Extraction complete: ${interactions.length} interactions found`)
 
-    // Add this just before the final return statement
+    // Track usage
     try {
       const { userId } = await auth()
       if (userId) {
@@ -183,7 +200,6 @@ export async function POST(request: NextRequest) {
       }
     } catch (error) {
       console.error('Failed to track usage:', error)
-      // Don't fail the extraction if usage tracking fails
     }
     
     return NextResponse.json(result)
@@ -191,7 +207,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Extraction API error:', error)
     
-    // Update extraction status to failed if we have one
     if (extraction?.id) {
       try {
         await SupabaseExtraction.updateExtraction(extraction.id, { 
@@ -211,21 +226,87 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-  function formatDateForTitle(): string {
-    const now = new Date()
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
+}
+
+// Background processing handler
+async function handleBackgroundProcessing(user: any, files: File[], userEmail: string) {
+  try {
+    // Create job and upload files
+    const jobId = await JobManager.createJob(user.id, files.length)
     
-    if (now.toDateString() === today.toDateString()) {
-      return 'Today'
-    } else if (now.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday'
-    } else {
-      return now.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
+    console.log(`Uploading ${files.length} files to storage for background processing`)
+    const uploadPromises = files.map(file => 
+      FileStorage.uploadFile(user.id, file, jobId)
+    )
+    await Promise.all(uploadPromises)
+    
+    // Trigger background processing with timeout protection
+    console.log('Triggering background extraction job')
+    
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+    
+    try {
+      const backgroundResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/process-background`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jobId,
+          userId: user.id,
+          userEmail,
+          fileCount: files.length
+        }),
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId)
+
+      if (!backgroundResponse.ok) {
+        const errorData = await backgroundResponse.json().catch(() => ({}))
+        throw new Error(`Background processing failed to start: ${errorData.error || 'Unknown error'}`)
+      }
+
+      return NextResponse.json({
+        success: true,
+        jobId,
+        message: `Large upload detected (${files.length} files). Processing in background...`,
+        useBackgroundJob: true,
+        fileCount: files.length
+      })
+
+    } catch (fetchError) {
+      clearTimeout(timeoutId)
+      throw fetchError
     }
+
+  } catch (error) {
+    console.error('Background processing setup failed:', error)
+    
+    // Handle specific errors
+    if (error instanceof Error) {
+      if (error.message === 'Concurrent job limit reached') {
+        return NextResponse.json(
+          { error: 'Processing limit reached. Please wait for current extractions to complete or upgrade your plan.' },
+          { status: 429 }
+        )
+      }
+      
+      if (error.name === 'AbortError') {
+        return NextResponse.json(
+          { error: 'Background processing timed out. Please try with fewer or smaller files.' },
+          { status: 408 }
+        )
+      }
+    }
+    
+    return NextResponse.json(
+      { 
+        error: 'Failed to start background processing. Please try with fewer or smaller files.',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
   }
 }

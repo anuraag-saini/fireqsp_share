@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/nextjs'
-import { Upload, File, X, Loader2, CheckCircle, AlertCircle, Paperclip } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Upload, File, X, Loader2, CheckCircle, AlertCircle, Paperclip, Clock } from 'lucide-react'
 import { brandConfig } from '@/lib/brand-config'
 
 interface UploadedFile {
@@ -29,16 +30,19 @@ interface ExtractionResults {
   }
   errors?: string[]
   message?: string
+  // Background job properties
+  useBackgroundJob?: boolean
+  jobId?: string
+  fileCount?: number
 }
 
 interface PDFUploaderProps {
   onExtractionComplete?: (results: ExtractionResults) => void
 }
 
-
-
 export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
   const { user } = useUser()
+  const router = useRouter()
   const [userLimits, setUserLimits] = useState<any>(null)
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [diseaseType, setDiseaseType] = useState<string>('Others')
@@ -62,6 +66,20 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
     checkLimits()
   }, [user?.id])
 
+  // Get plan color for the bottom line
+  const getPlanColor = () => {
+    if (!userLimits?.plan) return '#d1d5db' // gray-300 default
+    
+    switch (userLimits.plan) {
+      case 'pro': return '#fbbf24' // amber-400 (golden)
+      case 'basic': return '#8b5cf6' // violet-500 (purple)  
+      case 'trial': return '#fbbf24' // amber-400 (golden)
+      case 'enterprise': return '#fbbf24' // amber-400 (golden)
+      case 'expired': return '#ef4444' // red-500
+      default: return '#d1d5db' // gray-300
+    }
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files).map(file => ({
@@ -74,6 +92,11 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
 
   const removeFile = (id: string) => {
     setFiles(prev => prev.filter(f => f.id !== id))
+  }
+
+  // Check if upload qualifies for background processing
+  const isLargeUpload = () => {
+    return files.length > 3 || files.some(uploadedFile => uploadedFile.file.size > 5 * 1024 * 1024)
   }
 
   const handleExtraction = async () => {
@@ -127,10 +150,23 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
         if (response.status === 413) {
           throw new Error('Files too large. Try smaller PDF files or fewer files.')
         }
+        if (response.status === 429) {
+          const result = await response.json()
+          throw new Error(result.error || 'Processing limit reached')
+        }
         throw new Error('Extraction failed')
       }
 
       const results = await response.json()
+      
+      // Handle background job response
+      if (results.useBackgroundJob) {
+        console.log('Redirecting to progress page for job:', results.jobId)
+        router.push(`/dashboard/progress/${results.jobId}`)
+        return
+      }
+      
+      // Handle synchronous response as before
       setExtractionResults(results)
       onExtractionComplete?.(results)
 
@@ -151,7 +187,13 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
 
   return (
     <div className="flex justify-center items-center h-[calc(70vh)] p-4">
-      <div className="max-w-2xl w-full bg-white border rounded-xl overflow-hidden" style={{ borderColor: brandConfig.colors.secondary[200] }}>
+      <div className="max-w-2xl w-full bg-white border rounded-xl overflow-hidden relative" style={{ borderColor: brandConfig.colors.secondary[200] }}>
+        {/* Plan Color Line - Subtle line at the bottom */}
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-2 rounded-b-xl"
+          style={{ backgroundColor: getPlanColor() }}
+        ></div>
+        
         {/* Chat Header */}
         <div className="px-5 py-4 border-b text-center" style={{ 
           borderColor: brandConfig.colors.secondary[100], 
@@ -160,7 +202,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
           <div className="text-sm font-medium" style={{ color: brandConfig.colors.secondary[600] }}>🔥 FireQSP</div>
         </div>
       
-      <div className="p-5">
+      <div className="p-5 pb-6"> {/* Added bottom padding to account for color line */}
         
         {/* Show upload interface when not extracting */}
         {!isExtracting && (
@@ -245,13 +287,33 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
           </div>
         )}
 
+        {/* Large Upload Warning */}
+        {files.length > 0 && isLargeUpload() && !isExtracting && (
+          <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-3xl flex items-center gap-2">
+            <Clock className="h-4 w-4 text-amber-600" />
+            <div className="text-amber-700 text-sm">
+              <span className="font-medium">Large upload detected!</span> 
+              <span className="text-amber-600"> This will be processed in the background. You'll be redirected to track progress.</span>
+            </div>
+          </div>
+        )}
+
         {/* Loading State */}
         {isExtracting && (
           <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-3xl">
             <div className="animate-spin rounded-full h-8 w-8 border-b-3 border-blue-600"></div>
             <div className="text-blue-700 text-sm font-medium">
-              Processing {files.length} file{files.length !== 1 ? 's' : ''}... 
-              <p className="text-gray-600">This may take a few minutes. Do not close/refresh this page.</p>
+              {isLargeUpload() ? (
+                <>
+                  Setting up background processing for {files.length} file{files.length !== 1 ? 's' : ''}...
+                  <p className="text-gray-600">You'll be redirected to track progress shortly.</p>
+                </>
+              ) : (
+                <>
+                  Processing {files.length} file{files.length !== 1 ? 's' : ''}... 
+                  <p className="text-gray-600">This may take a few minutes. Do not close/refresh this page.</p>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -276,7 +338,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
         )}
 
         {/* Success Display */}
-        {extractionResults && (
+        {extractionResults && !extractionResults.useBackgroundJob && (
           <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-3xl">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
