@@ -6,10 +6,9 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "50mb",
       allowedOrigins: ['localhost:3000', 'fireqsp.com']
-    },
+    }
   },
   
-  // Add this for API routes
   api: {
     bodyParser: {
       sizeLimit: '50mb',
@@ -17,17 +16,6 @@ const nextConfig: NextConfig = {
     responseLimit: false,
   },
   
-  // Webpack configuration to handle pdf-parse and similar libraries
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      // Handle pdf-parse and other problematic modules on server-side
-      config.externals = config.externals || []
-      config.externals.push({
-        'pdf-parse': 'commonjs pdf-parse'
-      })
-    }
-    return config
-  },
   async headers() {
     return [
       {

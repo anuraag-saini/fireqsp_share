@@ -5,6 +5,13 @@ import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { Upload, File, X, Loader2, CheckCircle, AlertCircle, Paperclip, Clock } from 'lucide-react'
 import { brandConfig } from '@/lib/brand-config'
+import { createClient } from '@supabase/supabase-js'
+
+// Create Supabase client for file uploads
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface UploadedFile {
   file: File
@@ -49,6 +56,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractionResults, setExtractionResults] = useState<ExtractionResults | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<{current: number, total: number, status: string} | null>(null)
 
   useEffect(() => {
     const checkLimits = async () => {
@@ -96,7 +104,8 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
 
   // Check if upload qualifies for background processing
   const isLargeUpload = () => {
-    return files.length > 3 || files.some(uploadedFile => uploadedFile.file.size > 5 * 1024 * 1024)
+    const totalSize = files.reduce((sum, {file}) => sum + file.size, 0)
+    return files.length > 3 || totalSize > 4 * 1024 * 1024 // 4MB total threshold
   }
 
   const handleExtraction = async () => {
@@ -129,51 +138,126 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
     setIsExtracting(true)
     setError(null)
     setExtractionResults(null)
+    setUploadProgress(null)
 
     try {
-      const formData = new FormData()
-      files.forEach(({ file }) => {
-        formData.append('files', file)
-      })
+      const shouldUseStorageUpload = isLargeUpload()
       
-      if (user?.emailAddresses[0]?.emailAddress) {
-        formData.append('userEmail', user.emailAddresses[0].emailAddress)
-      }
-      formData.append('diseaseType', diseaseType)
-
-      const response = await fetch('/api/extract', {
-        method: 'POST',
-        body: formData
-      })
-
-      if (!response.ok) {
-        if (response.status === 413) {
-          throw new Error('Files too large. Try smaller PDF files or fewer files.')
+      if (!shouldUseStorageUpload) {
+        // Small batches: use existing direct upload to /api/extract
+        console.log('Using direct processing for small batch')
+        
+        const formData = new FormData()
+        files.forEach(({ file }) => {
+          formData.append('files', file)
+        })
+        
+        if (user?.emailAddresses[0]?.emailAddress) {
+          formData.append('userEmail', user.emailAddresses[0].emailAddress)
         }
-        if (response.status === 429) {
-          const result = await response.json()
-          throw new Error(result.error || 'Processing limit reached')
-        }
-        throw new Error('Extraction failed')
-      }
+        formData.append('diseaseType', diseaseType)
 
-      const results = await response.json()
-      
-      // Handle background job response
-      if (results.useBackgroundJob) {
-        console.log('Redirecting to progress page for job:', results.jobId)
-        router.push(`/dashboard/progress/${results.jobId}`)
-        return
+        const response = await fetch('/api/extract', {
+          method: 'POST',
+          body: formData
+        })
+
+        if (!response.ok) {
+          if (response.status === 413) {
+            throw new Error('Files too large. Try smaller PDF files or fewer files.')
+          }
+          if (response.status === 429) {
+            const result = await response.json()
+            throw new Error(result.error || 'Processing limit reached')
+          }
+          throw new Error('Extraction failed')
+        }
+
+        const results = await response.json()
+        setExtractionResults(results)
+        onExtractionComplete?.(results)
+        
+      } else {
+        // Large batches: upload to storage first, then trigger processing
+        console.log('Large batch detected, uploading to storage first...')
+        
+        if (!user?.id) {
+          throw new Error('User not authenticated')
+        }
+        
+        const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        
+        // Step 1: Upload files to storage
+        setUploadProgress({ status: 'Uploading files to storage...', current: 0, total: files.length })
+        
+        const uploadPromises = files.map(async ({ file }, index) => {
+          const fileName = `${user.id}/${jobId}/${file.name}`
+          
+          const { data, error } = await supabase.storage
+            .from('extraction-files')
+            .upload(fileName, file)
+            
+          if (error) {
+            throw new Error(`Failed to upload ${file.name}: ${error.message}`)
+          }
+          
+          setUploadProgress({ 
+            status: 'Uploading to storage...', 
+            current: index + 1, 
+            total: files.length 
+          })
+          
+          return fileName
+        })
+        
+        await Promise.all(uploadPromises)
+        
+        // Step 2: Trigger processing with pre-uploaded files flag
+        setUploadProgress({ status: 'Starting background processing...', current: files.length, total: files.length })
+        
+        const formData = new FormData()
+        if (user?.emailAddresses[0]?.emailAddress) {
+          formData.append('userEmail', user.emailAddresses[0].emailAddress)
+        }
+        formData.append('diseaseType', diseaseType)
+        formData.append('usePreUploadedFiles', 'true')
+        formData.append('jobId', jobId)
+        formData.append('fileCount', files.length.toString())
+        // No files in FormData - they're already in storage!
+        
+        const response = await fetch('/api/extract', {
+          method: 'POST',
+          body: formData
+        })
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            const result = await response.json()
+            throw new Error(result.error || 'Processing limit reached')
+          }
+          throw new Error('Failed to start background processing')
+        }
+
+        const results = await response.json()
+        
+        // Handle background job response
+        if (results.useBackgroundJob) {
+          console.log('Redirecting to progress page for job:', results.jobId)
+          router.push(`/dashboard/progress/${results.jobId}`)
+          return
+        }
+        
+        // Handle synchronous response (fallback)
+        setExtractionResults(results)
+        onExtractionComplete?.(results)
       }
-      
-      // Handle synchronous response as before
-      setExtractionResults(results)
-      onExtractionComplete?.(results)
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extraction failed')
+      console.error('Extraction error:', err)
     } finally {
       setIsExtracting(false)
+      setUploadProgress(null)
     }
   }
 
@@ -293,7 +377,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
             <Clock className="h-4 w-4 text-amber-600" />
             <div className="text-amber-700 text-sm">
               <span className="font-medium">Large upload detected!</span> 
-              <span className="text-amber-600"> This will be processed in the background. You'll be redirected to track progress.</span>
+              <span className="text-amber-600"> Files will be uploaded to secure storage first, then processed in the background.</span>
             </div>
           </div>
         )}
@@ -303,7 +387,16 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
           <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-3xl">
             <div className="animate-spin rounded-full h-8 w-8 border-b-3 border-blue-600"></div>
             <div className="text-blue-700 text-sm font-medium">
-              {isLargeUpload() ? (
+              {uploadProgress ? (
+                <>
+                  {uploadProgress.status}
+                  {uploadProgress.current > 0 && (
+                    <div className="mt-1 text-xs text-gray-600">
+                      {uploadProgress.current} of {uploadProgress.total} files
+                    </div>
+                  )}
+                </>
+              ) : isLargeUpload() ? (
                 <>
                   Setting up background processing for {files.length} file{files.length !== 1 ? 's' : ''}...
                   <p className="text-gray-600">You'll be redirected to track progress shortly.</p>

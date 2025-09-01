@@ -22,8 +22,62 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth()
 
     const formData = await request.formData()
+
     const files = formData.getAll('files') as File[]
     const userEmail = formData.get('userEmail') as string
+
+    // NEW: Check if files are pre-uploaded to storage
+    const usePreUploadedFiles = formData.get('usePreUploadedFiles') === 'true'
+    const preUploadedJobId = formData.get('jobId') as string
+    const fileCount = parseInt(formData.get('fileCount') as string || '0')
+
+    // Handle pre-uploaded files case
+    if (usePreUploadedFiles && preUploadedJobId && fileCount > 0) {
+      console.log(`Processing ${fileCount} pre-uploaded files for job: ${preUploadedJobId}`)
+      
+      // Create job record and start background processing
+      const actualJobId = await JobManager.createJob(user.id, fileCount)
+      
+      // Copy files from temp upload location to job location
+      const { data: uploadedFiles } = await supabase.storage
+        .from('extraction-files')
+        .list(`${user.id}/${preUploadedJobId}`)
+        
+      if (uploadedFiles && uploadedFiles.length > 0) {
+        // Files are already uploaded, start background processing
+        BackgroundProcessor.processExtractionJob(
+          actualJobId,
+          user.id,
+          userEmail,
+          fileCount
+        ).catch(error => {
+          console.error('Background processing failed:', error)
+        })
+
+        return NextResponse.json({
+          success: true,
+          jobId: actualJobId,
+          message: `Processing ${fileCount} files in background...`,
+          useBackgroundJob: true,
+          fileCount: fileCount
+        })
+      } else {
+        return NextResponse.json(
+          { error: 'Pre-uploaded files not found' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Continue with regular processing (existing code)
+    if (!files.length) {
+      return NextResponse.json(
+        { error: 'No files provided' }, 
+        { status: 400 }
+      )
+    }
+
+    // Your existing code continues from here...
 
     if (!files.length) {
       return NextResponse.json(
@@ -220,7 +274,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Background processing handler with enhanced debugging
 async function handleBackgroundProcessing(user: any, files: File[], userEmail: string) {
   console.log('🚀 BACKGROUND PROCESSING START', {
     userId: user.id,
@@ -235,168 +288,70 @@ async function handleBackgroundProcessing(user: any, files: File[], userEmail: s
     const jobId = await JobManager.createJob(user.id, files.length)
     console.log('✅ Job created successfully:', jobId)
     
-    // Step 2: Upload files
-    console.log('📤 Step 2: Uploading files to storage...')
-    const uploadPromises = files.map((file, index) => {
-      console.log(`  - Uploading file ${index + 1}/${files.length}: ${file.name} (${file.size} bytes)`)
-      return FileStorage.uploadFile(user.id, file, jobId)
-    })
+    // Step 2: Check if files are already uploaded (client-side upload)
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0)
+    const isLargePayload = totalSize > 4 * 1024 * 1024 // 4MB
     
-    const uploadResults = await Promise.all(uploadPromises)
-    console.log('✅ All files uploaded successfully:', uploadResults)
+    if (isLargePayload) {
+      // Files should already be uploaded by client - just start processing
+      console.log('📦 Large payload detected - assuming files pre-uploaded to storage')
+      
+      // Verify files exist in storage (optional check)
+      const { data: existingFiles } = await supabase.storage
+        .from('extraction-files')
+        .list(`${user.id}/${jobId}`)
+      
+      if (!existingFiles || existingFiles.length === 0) {
+        // Files not found - they need to be uploaded
+        console.log('📤 Files not found in storage, uploading now...')
+        const uploadPromises = files.map(file => 
+          FileStorage.uploadFile(user.id, file, jobId)
+        )
+        await Promise.all(uploadPromises)
+      } else {
+        console.log(`📦 Found ${existingFiles.length} pre-uploaded files`)
+      }
+      
+    } else {
+      // Small payload - upload normally
+      console.log('📤 Step 2: Uploading files to storage...')
+      const uploadPromises = files.map(file => 
+        FileStorage.uploadFile(user.id, file, jobId)
+      )
+      await Promise.all(uploadPromises)
+    }
     
-    // Step 3: Trigger background processing
+    // Step 3: Trigger background processing (same as before)
     console.log('🎯 Step 3: Triggering background processing...')
     
-    const backgroundUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/process-background`
-    console.log('Background URL:', backgroundUrl)
+    const backgroundUrl = `${process.env.NEXTAUTH_URL}/api/process-background`
+    const requestBody = { jobId, userId: user.id, userEmail, fileCount: files.length }
     
-    const requestBody = {
-      jobId,
-      userId: user.id,
-      userEmail,
-      fileCount: files.length
-    }
-    console.log('Request body:', requestBody)
-    
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => {
-      console.log('⚠️ Request timeout triggered (10s)')
-      controller.abort()
-    }, 10000)
-    
-    try {
-      console.log('📡 Making fetch request to background processor...')
-      
-      const backgroundResponse = await fetch(backgroundUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
-      })
-      
-      console.log('📡 Fetch response received:', {
-        status: backgroundResponse.status,
-        statusText: backgroundResponse.statusText,
-        ok: backgroundResponse.ok
-      })
-      
-      clearTimeout(timeoutId)
-
-      if (!backgroundResponse.ok) {
-        const errorText = await backgroundResponse.text()
-        console.error('❌ Background response not OK:', {
-          status: backgroundResponse.status,
-          statusText: backgroundResponse.statusText,
-          body: errorText
-        })
-        
-        let errorData
-        try {
-          errorData = JSON.parse(errorText)
-        } catch {
-          errorData = { error: errorText || 'Unknown error' }
-        }
-        
-        throw new Error(`Background processing failed to start: ${errorData.error || 'Unknown error'}`)
-      }
-
-      const responseData = await backgroundResponse.json()
-      console.log('✅ Background processing started successfully:', responseData)
-
-      return NextResponse.json({
-        success: true,
-        jobId,
-        message: `Large upload detected (${files.length} files). Processing in background...`,
-        useBackgroundJob: true,
-        fileCount: files.length,
-        debug: {
-          backgroundUrl,
-          uploadResults,
-          responseData
-        }
-      })
-
-    } catch (fetchError) {
-      clearTimeout(timeoutId)
-      console.error('❌ Fetch error details:', {
-        name: fetchError instanceof Error ? fetchError.name : 'Unknown',
-        message: fetchError instanceof Error ? fetchError.message : fetchError,
-        stack: fetchError instanceof Error ? fetchError.stack : undefined
-      })
-      throw fetchError
-    }
-
-  } catch (error) {
-    console.error('❌ BACKGROUND PROCESSING FAILED:', {
-      error: error instanceof Error ? error.message : error,
-      stack: error instanceof Error ? error.stack : undefined,
-      timestamp: new Date().toISOString()
+    const response = await fetch(backgroundUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(10000) // 10 second timeout
     })
     
-    // Enhanced error handling
-    if (error instanceof Error) {
-      if (error.message === 'Concurrent job limit reached') {
-        console.log('🚫 Concurrent job limit reached')
-        return NextResponse.json(
-          { error: 'Processing limit reached. Please wait for current extractions to complete or upgrade your plan.' },
-          { status: 429 }
-        )
-      }
-      
-      if (error.name === 'AbortError') {
-        console.log('⏱️ Request aborted due to timeout')
-        return NextResponse.json(
-          { error: 'Background processing timed out. Please try with fewer or smaller files.' },
-          { status: 408 }
-        )
-      }
-
-      // Network errors
-      if (error.message.includes('fetch')) {
-        console.log('🌐 Network/fetch error detected')
-        return NextResponse.json(
-          { 
-            error: 'Network error: Could not reach background processor. Please try again.',
-            details: error.message,
-            debugInfo: {
-              backgroundUrl: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/process-background`,
-              environment: process.env.NODE_ENV,
-              timestamp: new Date().toISOString()
-            }
-          },
-          { status: 500 }
-        )
-      }
-
-      // Database errors
-      if (error.message.includes('relation') || error.message.includes('table')) {
-        console.log('🗄️ Database schema error detected')
-        return NextResponse.json(
-          { 
-            error: 'Database configuration error. Please contact support.',
-            details: 'Missing required database tables for background processing',
-            debugInfo: {
-              error: error.message,
-              suggestion: 'Check if extraction_jobs table exists'
-            }
-          },
-          { status: 500 }
-        )
-      }
+    if (!response.ok) {
+      throw new Error(`Background processing failed: ${response.statusText}`)
     }
-    
+
+    return NextResponse.json({
+      success: true,
+      jobId,
+      message: `Processing ${files.length} files in background...`,
+      useBackgroundJob: true,
+      fileCount: files.length
+    })
+
+  } catch (error) {
+    console.error('❌ BACKGROUND PROCESSING FAILED:', error)
     return NextResponse.json(
       { 
-        error: 'Failed to start background processing. Please try with fewer or smaller files.',
-        details: error instanceof Error ? error.message : 'Unknown error',
-        debugInfo: {
-          timestamp: new Date().toISOString(),
-          userAgent: 'production',
-          environment: process.env.NODE_ENV
-        }
+        error: 'Failed to start background processing',
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     )
