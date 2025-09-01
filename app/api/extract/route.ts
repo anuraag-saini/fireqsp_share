@@ -9,6 +9,7 @@ import { incrementUserExtraction } from '@/lib/usage-tracking'
 import { JobManager } from '@/lib/job-manager'
 import { FileStorage } from '@/lib/file-storage'
 import { createClient } from '@supabase/supabase-js'
+import { BackgroundProcessor } from '@/lib/background-processor'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
