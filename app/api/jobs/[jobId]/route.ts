@@ -1,7 +1,7 @@
 // app/api/jobs/[jobId]/status/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { currentUser } from '@clerk/nextjs/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireAuth, handleAuthError } from '@/lib/auth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,12 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
-    const user = await currentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Await params before using
+    const user = await requireAuth()
     const { jobId } = await params
 
     console.log(`Checking job status for jobId: ${jobId}, userId: ${user.id}`)
@@ -87,9 +82,6 @@ export async function GET(
 
   } catch (error) {
     console.error('Status API error:', error)
-    return NextResponse.json({ 
-      error: 'Failed to get status',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    return handleAuthError(error)
   }
 }

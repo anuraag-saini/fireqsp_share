@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { currentUser } from '@clerk/nextjs/server'
+import { requireAuth, handleAuthError } from '@/lib/auth'
 import { SupabaseExtraction } from '@/lib/supabase-utils'
 
 // GET - Get specific extraction data
@@ -8,10 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await currentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await requireAuth()
 
     // Await the params object before accessing its properties
     const { id } = await params
@@ -30,9 +27,6 @@ export async function GET(
     
   } catch (error) {
     console.error('Error fetching extraction:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch extraction' },
-      { status: 500 }
-    )
+    return handleAuthError(error)
   }
 }

@@ -1,6 +1,6 @@
 // app/api/jobs/active/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { currentUser } from '@clerk/nextjs/server'
+import { requireAuth, handleAuthError } from '@/lib/auth'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -10,10 +10,7 @@ const supabase = createClient(
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await currentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await requireAuth()
 
     // Get active jobs (queued or processing)
     const { data: jobs, error } = await supabase
@@ -43,6 +40,6 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Active jobs API error:', error)
-    return NextResponse.json({ error: 'Failed to fetch active jobs' }, { status: 500 })
+    return handleAuthError(error)
   }
 }

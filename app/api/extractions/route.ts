@@ -1,34 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { currentUser } from '@clerk/nextjs/server'
+import { requireAuth, handleAuthError } from '@/lib/auth'
 import { SupabaseExtraction } from '@/lib/supabase-utils'
 
 // GET - Get user's extraction history
 export async function GET(request: NextRequest) {
   try {
-    const user = await currentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await requireAuth()
 
     const extractions = await SupabaseExtraction.getUserExtractions(user.id)
     return NextResponse.json({ extractions })
     
   } catch (error) {
     console.error('Error fetching extractions:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch extractions' },
-      { status: 500 }
-    )
+    return handleAuthError(error)
   }
 }
 
 // DELETE - Delete an extraction
 export async function DELETE(request: NextRequest) {
   try {
-    const user = await currentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await requireAuth()
 
     const { searchParams } = new URL(request.url)
     const extractionId = searchParams.get('id')
@@ -42,9 +33,6 @@ export async function DELETE(request: NextRequest) {
     
   } catch (error) {
     console.error('Error deleting extraction:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete extraction' },
-      { status: 500 }
-    )
+    return handleAuthError(error)
   }
 }

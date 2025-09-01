@@ -20,6 +20,14 @@ export class BackgroundProcessor {
     userEmail: string,
     fileCount: number
   ): Promise<{ success: boolean; error?: string }> {
+    console.log("🚀 BACKGROUND PROCESSOR STARTED", {
+      jobId,
+      userId,
+      userEmail,
+      fileCount,
+      timestamp: new Date().toISOString(),
+    })    
+    
     let extraction: any = null
     
     try {
@@ -32,6 +40,7 @@ export class BackgroundProcessor {
       })
       
       // Get file list from storage
+      console.log("🔹 Listing files from storage")
       const { data: fileList } = await supabase.storage
         .from('extraction-files')
         .list(`${userId}/${jobId}`)

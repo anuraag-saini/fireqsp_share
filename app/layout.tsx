@@ -2,6 +2,7 @@ import './globals.css'
 import { ClerkProvider } from '@clerk/nextjs'
 import { Inter } from 'next/font/google'
 import { Navigation } from '@/components/Navigation'
+import { enGB } from '@clerk/localizations' // or deDE etc.
 
 const inter = Inter({ subsets: ['latin'] })
 

@@ -34,21 +34,21 @@ const plans = [
     priceId: 'pro',
     popular: true
   },
-  {
-    title: 'Enterprise',
-    monthlyPrice: 299,
-    description: 'Full-featured platform for teams',
-    features: [
-      'Everything in Pro',
-      'Team collaboration',
-      'Custom integrations',
-      'Dedicated support',
-      'SLA guarantee',
-      'Custom training'
-    ],
-    priceId: 'enterprise',
-    popular: false
-  }
+  // {
+  //   title: 'Enterprise',
+  //   monthlyPrice: 299,
+  //   description: 'Full-featured platform for teams',
+  //   features: [
+  //     'Everything in Pro',
+  //     'Team collaboration',
+  //     'Custom integrations',
+  //     'Dedicated support',
+  //     'SLA guarantee',
+  //     'Custom training'
+  //   ],
+  //   priceId: 'enterprise',
+  //   popular: false
+  // }
 ]
 
 function PricingCard({ plan, isYearly, index }: { 
@@ -226,7 +226,7 @@ export default function PricingPage() {
         </div>
         
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-8 max-w-7xl mx-auto">
           {plans.map((plan, index) => (
             <PricingCard 
               key={`${plan.title}-${isYearly}`} 

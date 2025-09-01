@@ -4,7 +4,9 @@ import { BackgroundProcessor } from '@/lib/background-processor'
 
 export async function POST(request: NextRequest) {
   try {
+
     const { jobId, userId, userEmail, fileCount } = await request.json()
+
     
     if (!jobId || !userId || !userEmail || !fileCount) {
       return NextResponse.json(

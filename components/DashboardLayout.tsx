@@ -112,6 +112,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const handleNewExtraction = () => {
     clearAll()
     setCurrentStep('upload')
+    router.push('/dashboard') // Add navigation
   }
 
   const handleLoadHistoricalExtraction = async (extractionId: string) => {

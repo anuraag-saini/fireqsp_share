@@ -1,6 +1,6 @@
 // app/api/admin/users/route.ts - Fixed ESLint errors
 import { NextRequest, NextResponse } from 'next/server'
-import { currentUser } from '@clerk/nextjs/server'
+import { requireAuth, handleAuthError } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
 const ADMIN_EMAILS = [
@@ -12,11 +12,11 @@ export async function GET() {
   try {
     console.log('👥 Admin users API called')
     
-    const user = await currentUser()
+    const user = await requireAuth()
     
-    if (!user || !ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || '')) {
+    if (!ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || '')) {
       console.log('❌ Unauthorized users access')
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 })
     }
 
     console.log('✅ Admin users access granted, using supabaseAdmin client')
@@ -102,19 +102,16 @@ export async function GET() {
     
   } catch (error) {
     console.error('❌ Admin users fetch error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch users', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return handleAuthError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await currentUser()
+    const user = await requireAuth()
     
-    if (!user || !ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || '')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || '')) {
+      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 })
     }
 
     const { userId, action } = await request.json()
@@ -178,9 +175,6 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('❌ Admin user action error:', error)
-    return NextResponse.json(
-      { error: 'Failed to perform action', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return handleAuthError(error)
   }
 }

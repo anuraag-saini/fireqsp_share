@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { currentUser, auth } from '@clerk/nextjs/server'
+import { auth } from '@clerk/nextjs/server'
+import { requireAuth, handleAuthError } from '@/lib/auth'
 import { extractPagesFromPDF, createFilesHash } from '@/lib/pdf-processing'
 import { extractInteractionsFromPages, extractReferencesFromPages, extractDiseaseTypeFromPages } from '@/lib/extraction'
 import { SupabaseExtraction } from '@/lib/supabase-utils'
@@ -18,10 +19,7 @@ export async function POST(request: NextRequest) {
   let extraction: any = null
   
   try {
-    const user = await currentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await requireAuth()
 
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]
@@ -218,13 +216,7 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    return NextResponse.json(
-      { 
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    )
+    return handleAuthError(error)
   }
 }
 

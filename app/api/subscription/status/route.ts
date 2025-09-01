@@ -1,6 +1,7 @@
 // app/api/subscription/status/route.ts - FIXED EMAIL FETCH
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { handleAuthError } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET() {
@@ -131,6 +132,6 @@ export async function GET() {
     
   } catch (error) {
     console.error('❌ Subscription status error:', error)
-    return NextResponse.json({ error: 'Failed to get status' }, { status: 500 })
+    return handleAuthError(error)
   }
 }

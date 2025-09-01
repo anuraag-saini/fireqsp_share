@@ -9,13 +9,14 @@ export async function extractPagesFromPDF(file: File): Promise<DocumentPage[]> {
     
     console.log(`Buffer created, size: ${buffer.length} bytes`)
     
-    // Use pdf-parse with explicit buffer option
-    const pdfParse = (await import('pdf-parse')).default;
-    const pdfData = await pdfParse(buffer, {
-        max: 0, // Parse all pages
-    });
+    // Import pdf-parse using require to avoid ES module issues
+    const pdfParse = require('pdf-parse')
     
-    // console.log(`Extracted text from ${file.name} (${pdfData.numpages} pages)`)
+    const pdfData = await pdfParse(buffer, {
+      max: 0, // Parse all pages
+    })
+    
+    console.log(`Extracted text from ${file.name} (${pdfData.numpages} pages)`)
     
     // Split text into logical chunks (since pdf-parse doesn't preserve page boundaries)
     const chunks = splitTextIntoChunks(pdfData.text, 3000)
@@ -56,13 +57,33 @@ export async function extractPagesFromPDF(file: File): Promise<DocumentPage[]> {
     
   } catch (error) {
     console.error('PDF extraction error:', error)
+    
+    // More specific error messages for better debugging
+    if (error instanceof Error) {
+      if (error.message.includes('Invalid PDF')) {
+        throw new Error(`Corrupted PDF file: ${file.name}`)
+      }
+      if (error.message.includes('password') || error.message.includes('encrypted')) {
+        throw new Error(`Password-protected PDF: ${file.name}`)
+      }
+    }
+    
     throw new Error(`Failed to extract text from ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
-// Rest of your functions remain the same...
-
 function splitTextIntoChunks(text: string, chunkSize: number): string[] {
+  if (!text || text.trim().length === 0) {
+    return []
+  }
+  
+  // Clean up common PDF extraction artifacts
+  const cleanText = text
+    .replace(/\s+/g, ' ')           // Normalize whitespace
+    .replace(/\f/g, ' ')           // Remove form feeds
+    .replace(/\u00a0/g, ' ')       // Replace non-breaking spaces
+    .trim()
+    
   const chunks: string[] = []
   const sentences = text.split(/[.!?]+/)
   
@@ -94,6 +115,8 @@ export function filterReferencePages(pages: DocumentPage[]): DocumentPage[] {
     // If page has reference keywords and is mostly citations, filter it out
     if (hasReferenceKeywords) {
       const citationPattern = /\d{4}[.;,]\s|et al[.;,]\s|vol\.\s*\d+|pp\.\s*\d+/gi
+      // const citationPattern = /\\d{4}[.;,]\\s|et al[.;,]\\s|vol\\.\\s*\\d+|pp\\.\\s*\\d+/gi
+                              
       const citationMatches = content.match(citationPattern) || []
       const citationDensity = citationMatches.length / content.split(' ').length
       

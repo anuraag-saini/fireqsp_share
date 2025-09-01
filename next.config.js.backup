@@ -1,12 +1,11 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  serverExternalPackages: ["pdf-parse"],
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  serverExternalPackages: ['pdf-parse'],
   experimental: {
     serverActions: {
-      bodySizeLimit: "50mb",
       allowedOrigins: ['localhost:3000', 'fireqsp.com']
     },
+    // Add support for problematic Node.js modules
   },
   // Webpack configuration to handle pdf-parse and similar libraries
   webpack: (config, { isServer }) => {
@@ -40,6 +39,6 @@ const nextConfig: NextConfig = {
       }
     ]
   }
-};
+}
 
-export default nextConfig;
+module.exports = nextConfig

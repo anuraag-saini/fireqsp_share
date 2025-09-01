@@ -1,6 +1,6 @@
 // app/api/admin/activity/route.ts - Fixed ESLint errors
 import { NextResponse } from 'next/server'
-import { currentUser } from '@clerk/nextjs/server'
+import { requireAuth, handleAuthError } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
 const ADMIN_EMAILS = [
@@ -12,11 +12,11 @@ export async function GET() {
   try {
     console.log('📈 Admin activity API called')
     
-    const user = await currentUser()
+    const user = await requireAuth()
     
-    if (!user || !ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || '')) {
+    if (!ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || '')) {
       console.log('❌ Unauthorized activity access')
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 })
     }
 
     console.log('✅ Admin activity access granted, using supabaseAdmin client')
@@ -136,9 +136,6 @@ export async function GET() {
     
   } catch (error) {
     console.error('❌ Admin activity fetch error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch activity', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return handleAuthError(error)
   }
 }
