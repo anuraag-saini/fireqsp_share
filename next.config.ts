@@ -8,6 +8,15 @@ const nextConfig: NextConfig = {
       allowedOrigins: ['localhost:3000', 'fireqsp.com']
     },
   },
+  
+  // Add this for API routes
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb',
+    },
+    responseLimit: false,
+  },
+  
   // Webpack configuration to handle pdf-parse and similar libraries
   webpack: (config, { isServer }) => {
     if (isServer) {
