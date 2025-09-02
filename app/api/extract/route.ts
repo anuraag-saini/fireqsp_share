@@ -26,51 +26,9 @@ export async function POST(request: NextRequest) {
 
     const files = formData.getAll('files') as File[]
     const userEmail = formData.get('userEmail') as string
+    const forceBackgroundProcessing = formData.get('forceBackgroundProcessing') === 'true'
 
-    // NEW: Check if files are pre-uploaded to storage
-    const usePreUploadedFiles = formData.get('usePreUploadedFiles') === 'true'
-    const preUploadedJobId = formData.get('jobId') as string
-    const fileCount = parseInt(formData.get('fileCount') as string || '0')
-
-    // Handle pre-uploaded files case
-    if (usePreUploadedFiles && preUploadedJobId && fileCount > 0) {
-      console.log(`Processing ${fileCount} pre-uploaded files for job: ${preUploadedJobId}`)
-      
-      // Create job record and start background processing
-      const actualJobId = await JobManager.createJob(user.id, fileCount)
-      
-      // Copy files from temp upload location to job location
-      const { data: uploadedFiles } = await supabase.storage
-        .from('extraction-files')
-        .list(`${user.id}/${preUploadedJobId}`)
-        
-      if (uploadedFiles && uploadedFiles.length > 0) {
-        // Files are already uploaded, start background processing
-        BackgroundProcessor.processExtractionJob(
-          actualJobId,
-          user.id,
-          userEmail,
-          fileCount
-        ).catch(error => {
-          console.error('Background processing failed:', error)
-        })
-
-        return NextResponse.json({
-          success: true,
-          jobId: actualJobId,
-          message: `Processing ${fileCount} files in background...`,
-          useBackgroundJob: true,
-          fileCount: fileCount
-        })
-      } else {
-        return NextResponse.json(
-          { error: 'Pre-uploaded files not found' },
-          { status: 400 }
-        )
-      }
-    }
-
-    // Continue with regular processing (existing code)
+    // Continue with regular processing
     if (!files.length) {
       return NextResponse.json(
         { error: 'No files provided' }, 
@@ -90,7 +48,8 @@ export async function POST(request: NextRequest) {
     console.log(`Processing ${files.length} files for user: ${userEmail}`)
 
     // Check if we should use background processing
-    const shouldUseBackgroundProcessing = files.length > 3 || 
+    const shouldUseBackgroundProcessing = forceBackgroundProcessing || 
+      files.length > 3 || 
       files.some((file: File) => file.size > 5 * 1024 * 1024) // > 5MB
     
     if (shouldUseBackgroundProcessing) {
