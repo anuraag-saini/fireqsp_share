@@ -205,7 +205,6 @@ export class BackgroundProcessor {
       
       // Create final title (using your existing logic)
       const baseTitle = diseaseType && diseaseType !== 'General' ? diseaseType : 'Untitled'
-      const finalTitle = `${baseTitle} (${filesProcessed} file${filesProcessed > 1 ? 's' : ''}) - ${formatDateForTitle()}`
       
       // Save everything to database (using your existing logic)
       if (interactions.length === 0) {
@@ -226,7 +225,7 @@ export class BackgroundProcessor {
       
       // Update extraction with final details
       await SupabaseExtraction.updateExtraction(extraction.id, {
-        title: finalTitle,
+        title: baseTitle,
         status: 'completed',
         interaction_count: interactions.length
         // Remove disease_type from here - we'll update it separately if needed

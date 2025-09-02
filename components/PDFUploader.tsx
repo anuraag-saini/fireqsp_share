@@ -98,7 +98,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
   // Check if upload qualifies for background processing
   const isLargeUpload = () => {
     const totalSize = files.reduce((sum, {file}) => sum + file.size, 0)
-    return files.length > 2 || totalSize > 2 * 1024 * 1024 // 4MB total threshold
+    return files.length > 1 || totalSize > 1 * 1024 * 1024 // 4MB total threshold
   }
 
   const handleExtraction = async () => {
