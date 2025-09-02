@@ -5,13 +5,6 @@ import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { Upload, File, X, Loader2, CheckCircle, AlertCircle, Paperclip, Clock } from 'lucide-react'
 import { brandConfig } from '@/lib/brand-config'
-import { createClient } from '@supabase/supabase-js'
-
-// Create Supabase client for file uploads
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 interface UploadedFile {
   file: File
@@ -141,119 +134,53 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
     setUploadProgress(null)
 
     try {
-      const shouldUseStorageUpload = isLargeUpload()
+      const formData = new FormData()
+      files.forEach(({ file }) => {
+        formData.append('files', file)
+      })
       
-      if (!shouldUseStorageUpload) {
-        // Small batches: use existing direct upload to /api/extract
-        console.log('Using direct processing for small batch')
-        
-        const formData = new FormData()
-        files.forEach(({ file }) => {
-          formData.append('files', file)
-        })
-        
-        if (user?.emailAddresses[0]?.emailAddress) {
-          formData.append('userEmail', user.emailAddresses[0].emailAddress)
-        }
-        formData.append('diseaseType', diseaseType)
-
-        const response = await fetch('/api/extract', {
-          method: 'POST',
-          body: formData
-        })
-
-        if (!response.ok) {
-          if (response.status === 413) {
-            throw new Error('Files too large. Try smaller PDF files or fewer files.')
-          }
-          if (response.status === 429) {
-            const result = await response.json()
-            throw new Error(result.error || 'Processing limit reached')
-          }
-          throw new Error('Extraction failed')
-        }
-
-        const results = await response.json()
-        setExtractionResults(results)
-        onExtractionComplete?.(results)
-        
-      } else {
-        // Large batches: upload to storage first, then trigger processing
-        console.log('Large batch detected, uploading to storage first...')
-        
-        if (!user?.id) {
-          throw new Error('User not authenticated')
-        }
-        
-        const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        
-        // Step 1: Upload files to storage
-        setUploadProgress({ status: 'Uploading files to storage...', current: 0, total: files.length })
-        
-        const uploadPromises = files.map(async ({ file }, index) => {
-          const fileName = `${user.id}/${jobId}/${file.name}`
-          
-          const { data, error } = await supabase.storage
-            .from('extraction-files')
-            .upload(fileName, file)
-            
-          if (error) {
-            throw new Error(`Failed to upload ${file.name}: ${error.message}`)
-          }
-          
-          setUploadProgress({ 
-            status: 'Uploading to storage...', 
-            current: index + 1, 
-            total: files.length 
-          })
-          
-          return fileName
-        })
-        
-        await Promise.all(uploadPromises)
-        
-        // Step 2: Trigger processing with pre-uploaded files flag
-        setUploadProgress({ status: 'Starting background processing...', current: files.length, total: files.length })
-        
-        const formData = new FormData()
-        if (user?.emailAddresses[0]?.emailAddress) {
-          formData.append('userEmail', user.emailAddresses[0].emailAddress)
-        }
-        formData.append('diseaseType', diseaseType)
-        formData.append('usePreUploadedFiles', 'true')
-        formData.append('jobId', jobId)
-        formData.append('fileCount', files.length.toString())
-        // No files in FormData - they're already in storage!
-        
-        const response = await fetch('/api/extract', {
-          method: 'POST',
-          body: formData
-        })
-
-        if (!response.ok) {
-          if (response.status === 429) {
-            const result = await response.json()
-            throw new Error(result.error || 'Processing limit reached')
-          }
-          throw new Error('Failed to start background processing')
-        }
-
-        const results = await response.json()
-        
-        // Handle background job response
-        if (results.useBackgroundJob) {
-          console.log('Redirecting to progress page for job:', results.jobId)
-          router.push(`/dashboard/progress/${results.jobId}`)
-          return
-        }
-        
-        // Handle synchronous response (fallback)
-        setExtractionResults(results)
-        onExtractionComplete?.(results)
+      if (user?.emailAddresses[0]?.emailAddress) {
+        formData.append('userEmail', user.emailAddresses[0].emailAddress)
+      }
+      formData.append('diseaseType', diseaseType)
+      
+      // For large batches, tell the server to force background processing
+      if (isLargeUpload()) {
+        formData.append('forceBackgroundProcessing', 'true')
+        setUploadProgress({ status: 'Preparing background processing...', current: 0, total: files.length })
       }
 
+      const response = await fetch('/api/extract', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        if (response.status === 413) {
+          throw new Error('Files too large. Please try uploading fewer or smaller files.')
+        }
+        if (response.status === 429) {
+          const result = await response.json()
+          throw new Error(result.error || 'Processing limit reached')
+        }
+        throw new Error('Processing failed')
+      }
+
+      const results = await response.json()
+      
+      // Handle background job response
+      if (results.useBackgroundJob) {
+        console.log('Redirecting to progress page for job:', results.jobId)
+        router.push(`/dashboard/progress/${results.jobId}`)
+        return
+      }
+      
+      // Handle synchronous response
+      setExtractionResults(results)
+      onExtractionComplete?.(results)
+
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Extraction failed')
+      setError(err instanceof Error ? err.message : 'Processing failed')
       console.error('Extraction error:', err)
     } finally {
       setIsExtracting(false)
