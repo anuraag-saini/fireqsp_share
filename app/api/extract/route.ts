@@ -49,8 +49,8 @@ export async function POST(request: NextRequest) {
 
     // Check if we should use background processing
     const shouldUseBackgroundProcessing = forceBackgroundProcessing || 
-      files.length > 3 || 
-      files.some((file: File) => file.size > 5 * 1024 * 1024) // > 5MB
+      files.length > 2 || 
+      files.some((file: File) => file.size > 2 * 1024 * 1024) // > 5MB
     
     if (shouldUseBackgroundProcessing) {
       console.log('Large upload detected, using background processing')
@@ -248,38 +248,12 @@ async function handleBackgroundProcessing(user: any, files: File[], userEmail: s
     const jobId = await JobManager.createJob(user.id, files.length)
     console.log('✅ Job created successfully:', jobId)
     
-    // Step 2: Check if files are already uploaded (client-side upload)
-    const totalSize = files.reduce((sum, file) => sum + file.size, 0)
-    const isLargePayload = totalSize > 4 * 1024 * 1024 // 4MB
-    
-    if (isLargePayload) {
-      // Files should already be uploaded by client - just start processing
-      console.log('📦 Large payload detected - assuming files pre-uploaded to storage')
-      
-      // Verify files exist in storage (optional check)
-      const { data: existingFiles } = await supabase.storage
-        .from('extraction-files')
-        .list(`${user.id}/${jobId}`)
-      
-      if (!existingFiles || existingFiles.length === 0) {
-        // Files not found - they need to be uploaded
-        console.log('📤 Files not found in storage, uploading now...')
-        const uploadPromises = files.map(file => 
-          FileStorage.uploadFile(user.id, file, jobId)
-        )
-        await Promise.all(uploadPromises)
-      } else {
-        console.log(`📦 Found ${existingFiles.length} pre-uploaded files`)
-      }
-      
-    } else {
-      // Small payload - upload normally
-      console.log('📤 Step 2: Uploading files to storage...')
-      const uploadPromises = files.map(file => 
-        FileStorage.uploadFile(user.id, file, jobId)
-      )
-      await Promise.all(uploadPromises)
-    }
+    // Step 2: Upload files to storage
+    console.log('📤 Step 2: Uploading files to storage...')
+    const uploadPromises = files.map(file => 
+      FileStorage.uploadFile(user.id, file, jobId)
+    )
+    await Promise.all(uploadPromises)
     
     // Step 3: Trigger background processing (same as before)
     console.log('🎯 Step 3: Triggering background processing...')
