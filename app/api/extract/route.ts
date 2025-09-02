@@ -47,15 +47,15 @@ export async function POST(request: NextRequest) {
 
     console.log(`Processing ${files.length} files for user: ${userEmail}`)
 
-    // Check if we should use background processing
-    const shouldUseBackgroundProcessing = forceBackgroundProcessing || 
-      files.length > 2 || 
-      files.some((file: File) => file.size > 2 * 1024 * 1024) // > 5MB
+    // // Check if we should use background processing
+    // const shouldUseBackgroundProcessing = forceBackgroundProcessing || 
+    //   files.length > 2 || 
+    //   files.some((file: File) => file.size > 2 * 1024 * 1024) // > 5MB
     
-    if (shouldUseBackgroundProcessing) {
-      console.log('Large upload detected, using background processing')
-      return await handleBackgroundProcessing(user, files, userEmail)
-    }
+    // if (shouldUseBackgroundProcessing) {
+    //   console.log('Large upload detected, using background processing')
+    //   return await handleBackgroundProcessing(user, files, userEmail)
+    // }
 
     // Continue with synchronous processing for small uploads
     const cacheKey = createFilesHash(files)
@@ -234,60 +234,60 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleBackgroundProcessing(user: any, files: File[], userEmail: string) {
-  console.log('🚀 BACKGROUND PROCESSING START', {
-    userId: user.id,
-    fileCount: files.length,
-    userEmail,
-    timestamp: new Date().toISOString()
-  })
+// async function handleBackgroundProcessing(user: any, files: File[], userEmail: string) {
+//   console.log('🚀 BACKGROUND PROCESSING START', {
+//     userId: user.id,
+//     fileCount: files.length,
+//     userEmail,
+//     timestamp: new Date().toISOString()
+//   })
 
-  try {
-    // Step 1: Create job
-    console.log('📝 Step 1: Creating job...')
-    const jobId = await JobManager.createJob(user.id, files.length)
-    console.log('✅ Job created successfully:', jobId)
+//   try {
+//     // Step 1: Create job
+//     console.log('📝 Step 1: Creating job...')
+//     const jobId = await JobManager.createJob(user.id, files.length)
+//     console.log('✅ Job created successfully:', jobId)
     
-    // Step 2: Upload files to storage
-    console.log('📤 Step 2: Uploading files to storage...')
-    const uploadPromises = files.map(file => 
-      FileStorage.uploadFile(user.id, file, jobId)
-    )
-    await Promise.all(uploadPromises)
+//     // Step 2: Upload files to storage
+//     console.log('📤 Step 2: Uploading files to storage...')
+//     const uploadPromises = files.map(file => 
+//       FileStorage.uploadFile(user.id, file, jobId)
+//     )
+//     await Promise.all(uploadPromises)
     
-    // Step 3: Trigger background processing (same as before)
-    console.log('🎯 Step 3: Triggering background processing...')
+//     // Step 3: Trigger background processing (same as before)
+//     console.log('🎯 Step 3: Triggering background processing...')
     
-    const backgroundUrl = `${process.env.NEXTAUTH_URL}/api/process-background`
-    const requestBody = { jobId, userId: user.id, userEmail, fileCount: files.length }
+//     const backgroundUrl = `${process.env.NEXTAUTH_URL}/api/process-background`
+//     const requestBody = { jobId, userId: user.id, userEmail, fileCount: files.length }
     
-    const response = await fetch(backgroundUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(10000) // 10 second timeout
-    })
+//     const response = await fetch(backgroundUrl, {
+//       method: 'POST',
+//       headers: { 'Content-Type': 'application/json' },
+//       body: JSON.stringify(requestBody),
+//       signal: AbortSignal.timeout(10000) // 10 second timeout
+//     })
     
-    if (!response.ok) {
-      throw new Error(`Background processing failed: ${response.statusText}`)
-    }
+//     if (!response.ok) {
+//       throw new Error(`Background processing failed: ${response.statusText}`)
+//     }
 
-    return NextResponse.json({
-      success: true,
-      jobId,
-      message: `Processing ${files.length} files in background...`,
-      useBackgroundJob: true,
-      fileCount: files.length
-    })
+//     return NextResponse.json({
+//       success: true,
+//       jobId,
+//       message: `Processing ${files.length} files in background...`,
+//       useBackgroundJob: true,
+//       fileCount: files.length
+//     })
 
-  } catch (error) {
-    console.error('❌ BACKGROUND PROCESSING FAILED:', error)
-    return NextResponse.json(
-      { 
-        error: 'Failed to start background processing',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    )
-  }
-}
+//   } catch (error) {
+//     console.error('❌ BACKGROUND PROCESSING FAILED:', error)
+//     return NextResponse.json(
+//       { 
+//         error: 'Failed to start background processing',
+//         details: error instanceof Error ? error.message : 'Unknown error'
+//       },
+//       { status: 500 }
+//     )
+//   }
+// }
