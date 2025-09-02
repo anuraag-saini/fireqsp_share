@@ -5,7 +5,6 @@ import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { Upload, File, X, Loader2, CheckCircle, AlertCircle, Paperclip, Clock } from 'lucide-react'
 import { brandConfig } from '@/lib/brand-config'
-import { createClient } from '@supabase/supabase-js'
 
 interface UploadedFile {
   file: File
@@ -153,26 +152,28 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
       const { jobId, userId } = await jobResponse.json()
       console.log('Job created:', jobId)
 
-      // Step 2: Upload files directly to storage
+      // Step 2: Upload files via API (uses service role)
       setUploadProgress({ status: 'Uploading files...', current: 0, total: files.length })
-      
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
 
       for (let i = 0; i < files.length; i++) {
         const { file } = files[i]
-        const fileName = `${userId}/${jobId}/${file.name}`
         
         console.log(`Uploading file ${i + 1}/${files.length}: ${file.name}`)
         
-        const { data, error } = await supabase.storage
-          .from('extraction-files')
-          .upload(fileName, file)
-          
-        if (error) {
-          throw new Error(`Failed to upload ${file.name}: ${error.message}`)
+        // Upload via your existing FileStorage.uploadFile (server-side with service role)
+        const uploadFormData = new FormData()
+        uploadFormData.append('file', file)
+        uploadFormData.append('userId', userId)
+        uploadFormData.append('jobId', jobId)
+        
+        const uploadResponse = await fetch('/api/upload-file', {
+          method: 'POST',
+          body: uploadFormData
+        })
+        
+        if (!uploadResponse.ok) {
+          const error = await uploadResponse.text()
+          throw new Error(`Failed to upload ${file.name}: ${error}`)
         }
         
         setUploadProgress({ 
