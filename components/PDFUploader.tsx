@@ -5,6 +5,7 @@ import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { Upload, File, X, Loader2, CheckCircle, AlertCircle, Paperclip, Clock } from 'lucide-react'
 import { brandConfig } from '@/lib/brand-config'
+import { createClient } from '@supabase/supabase-js'
 
 interface UploadedFile {
   file: File
@@ -97,20 +98,19 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
 
   // Check if upload qualifies for background processing
   const isLargeUpload = () => {
-    const totalSize = files.reduce((sum, {file}) => sum + file.size, 0)
-    return files.length > 1 || totalSize > 1 * 1024 * 1024 // 4MB total threshold
+    return files.length > 0 // All uploads now use the same flow
   }
 
   const handleExtraction = async () => {
     if (files.length === 0) return
 
-    // Simple limit check
+    // Validation (keep existing validation logic)
     if (!userLimits?.canUpload) {
       setError('Extractions limit reached. Please upgrade your plan.')
       return
     }
 
-    // File size validation
+    // File size validation (keep existing)
     const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file  
     const MAX_TOTAL_SIZE = 40 * 1024 * 1024; // 40MB total
     
@@ -134,54 +134,78 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
     setUploadProgress(null)
 
     try {
-      const formData = new FormData()
-      files.forEach(({ file }) => {
-        formData.append('files', file)
-      })
+      // Step 1: Create job (no files sent)
+      setUploadProgress({ status: 'Creating job...', current: 0, total: files.length })
       
-      if (user?.emailAddresses[0]?.emailAddress) {
-        formData.append('userEmail', user.emailAddresses[0].emailAddress)
-      }
-      formData.append('diseaseType', diseaseType)
-      
-      // For large batches, tell the server to force background processing
-      if (isLargeUpload()) {
-        formData.append('forceBackgroundProcessing', 'true')
-        setUploadProgress({ status: 'Preparing background processing...', current: 0, total: files.length })
-      }
-
-      const response = await fetch('/api/extract', {
+      const jobResponse = await fetch('/api/upload-job', {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileCount: files.length,
+          userEmail: user?.emailAddresses[0]?.emailAddress
+        })
       })
 
-      if (!response.ok) {
-        if (response.status === 413) {
-          throw new Error('Files too large. Please try uploading fewer or smaller files.')
-        }
-        if (response.status === 429) {
-          const result = await response.json()
-          throw new Error(result.error || 'Processing limit reached')
-        }
-        throw new Error('Processing failed')
+      if (!jobResponse.ok) {
+        throw new Error('Failed to create job')
       }
 
-      const results = await response.json()
+      const { jobId, userId } = await jobResponse.json()
+      console.log('Job created:', jobId)
+
+      // Step 2: Upload files directly to storage
+      setUploadProgress({ status: 'Uploading files...', current: 0, total: files.length })
       
-      // Handle background job response
-      if (results.useBackgroundJob) {
-        console.log('Redirecting to progress page for job:', results.jobId)
-        router.push(`/dashboard/progress/${results.jobId}`)
-        return
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+
+      for (let i = 0; i < files.length; i++) {
+        const { file } = files[i]
+        const fileName = `${userId}/${jobId}/${file.name}`
+        
+        console.log(`Uploading file ${i + 1}/${files.length}: ${file.name}`)
+        
+        const { data, error } = await supabase.storage
+          .from('extraction-files')
+          .upload(fileName, file)
+          
+        if (error) {
+          throw new Error(`Failed to upload ${file.name}: ${error.message}`)
+        }
+        
+        setUploadProgress({ 
+          status: 'Uploading files...', 
+          current: i + 1, 
+          total: files.length 
+        })
       }
+
+      // Step 3: Trigger background processing
+      setUploadProgress({ status: 'Starting processing...', current: files.length, total: files.length })
       
-      // Handle synchronous response
-      setExtractionResults(results)
-      onExtractionComplete?.(results)
+      const processResponse = await fetch('/api/process-background', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId,
+          userId,
+          userEmail: user?.emailAddresses[0]?.emailAddress,
+          fileCount: files.length
+        })
+      })
+
+      if (!processResponse.ok) {
+        throw new Error('Failed to start processing')
+      }
+
+      console.log('Background processing started, redirecting to progress page')
+      router.push(`/dashboard/progress/${jobId}`)
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Processing failed')
-      console.error('Extraction error:', err)
+      console.error('Upload error:', err)
     } finally {
       setIsExtracting(false)
       setUploadProgress(null)
