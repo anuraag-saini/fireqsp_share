@@ -6,10 +6,7 @@ import { extractInteractionsFromPages, extractReferencesFromPages, extractDiseas
 import { SupabaseExtraction } from '@/lib/supabase-utils'
 import { Interaction } from '@/lib/prompts'
 import { incrementUserExtraction } from '@/lib/usage-tracking'
-import { JobManager } from '@/lib/job-manager'
-import { FileStorage } from '@/lib/file-storage'
 import { createClient } from '@supabase/supabase-js'
-import { BackgroundProcessor } from '@/lib/background-processor'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,18 +23,8 @@ export async function POST(request: NextRequest) {
 
     const files = formData.getAll('files') as File[]
     const userEmail = formData.get('userEmail') as string
-    const forceBackgroundProcessing = formData.get('forceBackgroundProcessing') === 'true'
 
-    // Continue with regular processing
-    if (!files.length) {
-      return NextResponse.json(
-        { error: 'No files provided' }, 
-        { status: 400 }
-      )
-    }
-
-    // Your existing code continues from here...
-
+    // Validate input
     if (!files.length) {
       return NextResponse.json(
         { error: 'No files provided' }, 
@@ -47,17 +34,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`Processing ${files.length} files for user: ${userEmail}`)
 
-    // // Check if we should use background processing
-    // const shouldUseBackgroundProcessing = forceBackgroundProcessing || 
-    //   files.length > 2 || 
-    //   files.some((file: File) => file.size > 2 * 1024 * 1024) // > 5MB
-    
-    // if (shouldUseBackgroundProcessing) {
-    //   console.log('Large upload detected, using background processing')
-    //   return await handleBackgroundProcessing(user, files, userEmail)
-    // }
-
-    // Continue with synchronous processing for small uploads
+    // Check cache first
     const cacheKey = createFilesHash(files)
     const cachedResult = SupabaseExtraction.getCachedResult(cacheKey)
     
@@ -69,7 +46,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Create extraction record
+    // Create extraction record with all required fields
     extraction = await SupabaseExtraction.createExtraction({
       user_id: user.id,
       title: 'Processing...',
@@ -78,7 +55,9 @@ export async function POST(request: NextRequest) {
       interaction_count: 0,
       interactions: null,
       source_references: null,
-      errors: null
+      errors: null,
+      job_id: null,
+      disease_type: 'General'
     })
 
     // Process all files together
@@ -89,7 +68,17 @@ export async function POST(request: NextRequest) {
       try {
         console.log(`Processing file: ${file.name}`)
         const pages = await extractPagesFromPDF(file)
-        allPages.push(...pages)
+        
+        // Add filename to each page for tracking
+        const pagesWithFilename = pages.map(page => ({
+          ...page,
+          metadata: {
+            ...page.metadata,
+            file_name: file.name
+          }
+        }))
+        
+        allPages.push(...pagesWithFilename)
         console.log(`Successfully processed ${file.name}: ${pages.length} pages`)
         
       } catch (error) {
@@ -100,10 +89,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (allPages.length === 0) {
-      await SupabaseExtraction.updateExtraction(extraction.id, { 
-        status: 'failed',
-        errors: fileErrors
-      })
+      await supabase
+        .from('extractions')
+        .update({ 
+          status: 'failed',
+          errors: fileErrors,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', extraction.id)
       
       return NextResponse.json({
         error: 'No content could be extracted from any files',
@@ -128,13 +121,26 @@ export async function POST(request: NextRequest) {
     
     console.log(`Extracted ${interactions.length} interactions`)
 
-    if (interactions.length === 0) {
-      await SupabaseExtraction.saveExtractionResults(
-        extraction.id,
-        [],
-        references,
-        [...allErrors, 'No interactions found in the uploaded documents']
-      )
+    // Add filename to each interaction
+    const interactionsWithFilename = interactions.map(interaction => ({
+      ...interaction,
+      filename: interaction.filename || allPages.find(page => 
+        page.page_content.includes(interaction.reference_text?.substring(0, 50) || '')
+      )?.metadata?.file_name || 'Unknown'
+    }))
+
+    if (interactionsWithFilename.length === 0) {
+      await supabase
+        .from('extractions')
+        .update({
+          status: 'completed',
+          interactions: [],
+          source_references: references,
+          errors: [...allErrors, 'No interactions found in the uploaded documents'],
+          interaction_count: 0,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', extraction.id)
 
       return NextResponse.json({
         extraction_id: extraction.id,
@@ -150,35 +156,27 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Create proper title with date
+    // Create proper title
     const baseTitle = diseaseType && diseaseType !== 'General' ? diseaseType : 'Untitled'
-    //const finalTitle = `${baseTitle} (${files.length} file${files.length > 1 ? 's' : ''}) - ${formatDateForTitle()}`
 
-    await SupabaseExtraction.saveExtractionResults(
-      extraction.id,
-      interactions,
-      references,
-      allErrors
-    )
-
-    // Update title
-    await SupabaseExtraction.updateExtraction(extraction.id, { 
-      title: baseTitle
-    })
-
-    // Update disease_type in database
-    const { error: diseaseUpdateError } = await supabase
+    // Save all results to database using direct supabase call
+    await supabase
       .from('extractions')
-      .update({ disease_type: diseaseType })
+      .update({
+        status: 'completed',
+        title: baseTitle,
+        disease_type: diseaseType,
+        interactions: interactionsWithFilename,
+        source_references: references,
+        errors: allErrors,
+        interaction_count: interactionsWithFilename.length,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', extraction.id)
-    
-    if (diseaseUpdateError) {
-      console.error('Failed to update disease_type:', diseaseUpdateError)
-    }
 
     const result = {
       extraction_id: extraction.id,
-      interactions: interactions.map((interaction, index): Interaction => ({
+      interactions: interactionsWithFilename.map((interaction, index): Interaction => ({
         id: interaction.id || `interaction_${extraction.id}_${index}`,
         mechanism: interaction.mechanism,
         source: interaction.source,
@@ -194,7 +192,7 @@ export async function POST(request: NextRequest) {
       errors: allErrors,
       summary: {
         totalFiles: files.length,
-        totalInteractions: interactions.length,
+        totalInteractions: interactionsWithFilename.length,
         filesWithErrors: fileErrors.length
       }
     }
@@ -202,7 +200,7 @@ export async function POST(request: NextRequest) {
     // Cache the result
     SupabaseExtraction.setCachedResult(cacheKey, result, 24)
 
-    console.log(`Extraction complete: ${interactions.length} interactions found`)
+    console.log(`Extraction complete: ${interactionsWithFilename.length} interactions found`)
 
     // Track usage
     try {
@@ -221,10 +219,14 @@ export async function POST(request: NextRequest) {
     
     if (extraction?.id) {
       try {
-        await SupabaseExtraction.updateExtraction(extraction.id, { 
-          status: 'failed',
-          errors: [error instanceof Error ? error.message : 'Unknown error']
-        })
+        await supabase
+          .from('extractions')
+          .update({ 
+            status: 'failed',
+            errors: [error instanceof Error ? error.message : 'Unknown error'],
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', extraction.id)
       } catch (updateError) {
         console.error('Failed to update extraction status:', updateError)
       }
@@ -233,61 +235,3 @@ export async function POST(request: NextRequest) {
     return handleAuthError(error)
   }
 }
-
-// async function handleBackgroundProcessing(user: any, files: File[], userEmail: string) {
-//   console.log('🚀 BACKGROUND PROCESSING START', {
-//     userId: user.id,
-//     fileCount: files.length,
-//     userEmail,
-//     timestamp: new Date().toISOString()
-//   })
-
-//   try {
-//     // Step 1: Create job
-//     console.log('📝 Step 1: Creating job...')
-//     const jobId = await JobManager.createJob(user.id, files.length)
-//     console.log('✅ Job created successfully:', jobId)
-    
-//     // Step 2: Upload files to storage
-//     console.log('📤 Step 2: Uploading files to storage...')
-//     const uploadPromises = files.map(file => 
-//       FileStorage.uploadFile(user.id, file, jobId)
-//     )
-//     await Promise.all(uploadPromises)
-    
-//     // Step 3: Trigger background processing (same as before)
-//     console.log('🎯 Step 3: Triggering background processing...')
-    
-//     const backgroundUrl = `${process.env.NEXTAUTH_URL}/api/process-background`
-//     const requestBody = { jobId, userId: user.id, userEmail, fileCount: files.length }
-    
-//     const response = await fetch(backgroundUrl, {
-//       method: 'POST',
-//       headers: { 'Content-Type': 'application/json' },
-//       body: JSON.stringify(requestBody),
-//       signal: AbortSignal.timeout(10000) // 10 second timeout
-//     })
-    
-//     if (!response.ok) {
-//       throw new Error(`Background processing failed: ${response.statusText}`)
-//     }
-
-//     return NextResponse.json({
-//       success: true,
-//       jobId,
-//       message: `Processing ${files.length} files in background...`,
-//       useBackgroundJob: true,
-//       fileCount: files.length
-//     })
-
-//   } catch (error) {
-//     console.error('❌ BACKGROUND PROCESSING FAILED:', error)
-//     return NextResponse.json(
-//       { 
-//         error: 'Failed to start background processing',
-//         details: error instanceof Error ? error.message : 'Unknown error'
-//       },
-//       { status: 500 }
-//     )
-//   }
-// }

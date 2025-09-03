@@ -214,7 +214,7 @@ export class BackgroundProcessor {
           
           const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(samplePages)
           diseaseType = detectedType || 'General'
-          title = diseaseType !== 'General' ? diseaseType : 'Extraction Complete'
+          title = diseaseType && diseaseType !== 'General' ? diseaseType : 'Untitled'
         } catch (diseaseError) {
           console.error('Disease type detection failed:', diseaseError)
         }
