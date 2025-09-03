@@ -207,7 +207,7 @@ export default function ProgressPage() {
           {/* Progress Bar */}
           <div className="mb-6">
             <div className="flex justify-between text-sm text-gray-600 mb-2">
-              <span>Upload</span>
+              <span>Progress</span>
               <span>{Math.round(progressPercent)}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
