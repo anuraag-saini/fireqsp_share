@@ -14,7 +14,6 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
     persistSession: false
   }
 })
-
 // Simplified Database types - single table with JSON columns
 export interface Database {
   public: {
@@ -33,6 +32,9 @@ export interface Database {
           interactions: any[] | null
           source_references: Record<string, string> | null
           errors: string[] | null
+          // Add missing fields that exist in your actual database
+          job_id: string | null
+          disease_type: string | null
         }
         Insert: Omit<Database['public']['Tables']['extractions']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['extractions']['Insert']>
