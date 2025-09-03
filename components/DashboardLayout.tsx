@@ -129,6 +129,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             interactions: extraction.interactions,
             references: extraction.source_references || {}
           })
+          router.push('/dashboard')
         }
       } else {
         throw new Error('Failed to load extraction')
