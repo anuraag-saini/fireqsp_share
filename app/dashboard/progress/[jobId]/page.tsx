@@ -198,9 +198,9 @@ export default function ProgressPage() {
               <h2 className="text-lg font-medium text-gray-900">
                 {getStatusText()}
               </h2>
-              <p className="text-sm text-gray-600">
+              {/* <p className="text-sm text-gray-600">
                 Job ID: {job.id.slice(0, 8)}...
-              </p>
+              </p> */}
             </div>
           </div>
 
