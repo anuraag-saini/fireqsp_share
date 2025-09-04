@@ -1,4 +1,4 @@
-// app/api/admin/activity/route.ts - Fixed ESLint errors
+// app/api/admin/activity/route.ts - Updated for 4 status types
 import { NextResponse } from 'next/server'
 import { requireAuth, handleAuthError } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
@@ -49,20 +49,36 @@ export async function GET() {
 
     console.log(`📧 Got emails for ${Object.keys(userEmailMap).length} users`)
 
-    // Transform extractions to activities
+    // Transform extractions to activities with 4 status types
     const extractionActivities = extractions?.map(extraction => {
       let action = 'PDF Extraction Started'
       let details = `Processing ${extraction.file_count} files`
 
-      if (extraction.status === 'completed') {
-        action = 'Extraction Completed'
-        details = `Found ${extraction.interaction_count || 0} interactions from ${extraction.file_count} files`
-      } else if (extraction.status === 'failed') {
-        action = 'Extraction Failed'
-        details = `Failed to process ${extraction.file_count} files`
-      } else if (extraction.status === 'processing') {
-        action = 'Extraction In Progress'
-        details = `Processing ${extraction.file_count} files`
+      // Handle 4 status types: completed, failed, processing, partial
+      switch (extraction.status) {
+        case 'completed':
+          action = 'Extraction Completed'
+          details = `Successfully processed ${extraction.file_count} files • Found ${extraction.interaction_count || 0} interactions`
+          break
+          
+        case 'failed':
+          action = 'Extraction Failed'
+          details = `Failed to process ${extraction.file_count} files • ${extraction.errors?.length || 0} errors`
+          break
+          
+        case 'processing':
+          action = 'Extraction In Progress'
+          details = `Currently processing ${extraction.file_count} files...`
+          break
+          
+        case 'partial':
+          action = 'Extraction Partially Completed'
+          details = `Partially processed ${extraction.file_count} files • Found ${extraction.interaction_count || 0} interactions • Some files may have timed out`
+          break
+          
+        default:
+          action = 'PDF Extraction Started'
+          details = `Processing ${extraction.file_count} files`
       }
 
       // Clean email display - handle various email patterns
@@ -84,7 +100,7 @@ export async function GET() {
         action,
         details,
         status: extraction.status,
-        title: extraction.title || 'Untitled Extraction',
+        title: extraction.title || 'Processing...',
         timestamp: extraction.created_at
       }
     }) || []

@@ -14,7 +14,8 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
     persistSession: false
   }
 })
-// Simplified Database types - single table with JSON columns
+
+// Updated Database types - now includes 'partial' status
 export interface Database {
   public: {
     Tables: {
@@ -23,21 +24,48 @@ export interface Database {
           id: string
           user_id: string
           title: string
-          status: 'processing' | 'completed' | 'failed'
+          status: 'processing' | 'completed' | 'failed' | 'partial'  // Added 'partial'
           file_count: number
           interaction_count: number
           created_at: string
           updated_at: string
-          // NEW: Store everything as JSON - no more flattening!
+          // Store everything as JSON
           interactions: any[] | null
           source_references: Record<string, string> | null
           errors: string[] | null
-          // Add missing fields that exist in your actual database
+          // Additional fields
           job_id: string | null
           disease_type: string | null
         }
         Insert: Omit<Database['public']['Tables']['extractions']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['extractions']['Insert']>
+      }
+      // Add system_settings table we created earlier
+      system_settings: {
+        Row: {
+          id: number
+          openai_model: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['system_settings']['Row'], 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['system_settings']['Insert']>
+      }
+      // Add user_subscriptions if not already there
+      user_subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          user_email: string
+          plan_type: string
+          status: string
+          granted_by_admin: boolean | null
+          expires_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['user_subscriptions']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['user_subscriptions']['Insert']>
       }
     }
   }

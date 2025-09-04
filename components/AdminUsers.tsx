@@ -1,8 +1,8 @@
-// components/AdminUsers.tsx
+// components/AdminUsers.tsx - Updated for Clerk integration
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Search, Filter, MoreHorizontal, Eye, Ban, Play, Trash2 } from 'lucide-react'
+import { Search, Filter, MoreHorizontal, Eye, Ban, Play, Trash2, UserPlus, UserCheck, UserX } from 'lucide-react'
 
 interface User {
   id: string
@@ -15,6 +15,13 @@ interface User {
   extractionsCount: number
   apiCallsThisMonth: number
   totalSpent: number
+  hasSubscription: boolean
+  isAdminGranted: boolean
+  clerkData: {
+    imageUrl?: string
+    username?: string
+    phoneNumbers?: string[]
+  }
 }
 
 export function AdminUsers() {
@@ -24,6 +31,7 @@ export function AdminUsers() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [planFilter, setPlanFilter] = useState('all')
+  const [subscriptionFilter, setSubscriptionFilter] = useState('all')
 
   useEffect(() => {
     fetchUsers()
@@ -47,12 +55,12 @@ export function AdminUsers() {
     }
   }
 
-  const handleUserAction = async (userId: string, action: string) => {
+  const handleUserAction = async (userId: string, action: string, planType?: string) => {
     try {
       const response = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, action })
+        body: JSON.stringify({ userId, action, planType })
       })
 
       if (!response.ok) {
@@ -66,15 +74,33 @@ export function AdminUsers() {
     }
   }
 
+  const handleGrantSubscription = async (userId: string, userEmail: string) => {
+    const planType = prompt(
+      `Grant subscription to ${userEmail}?\n\nChoose plan (basic/pro/enterprise):`,
+      'pro'
+    )
+    
+    if (planType && ['basic', 'pro', 'enterprise'].includes(planType.toLowerCase())) {
+      await handleUserAction(userId, 'grant_subscription', planType.toLowerCase())
+    }
+  }
+
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.name.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || user.status === statusFilter
     const matchesPlan = planFilter === 'all' || user.plan === planFilter
-    return matchesSearch && matchesStatus && matchesPlan
+    const matchesSubscription = subscriptionFilter === 'all' || 
+                               (subscriptionFilter === 'has_subscription' && user.hasSubscription) ||
+                               (subscriptionFilter === 'no_subscription' && !user.hasSubscription) ||
+                               (subscriptionFilter === 'admin_granted' && user.isAdminGranted)
+    
+    return matchesSearch && matchesStatus && matchesPlan && matchesSubscription
   })
 
-  const getPlanBadgeColor = (plan: string) => {
+  const getPlanBadgeColor = (plan: string, hasSubscription: boolean) => {
+    if (!hasSubscription) return 'bg-gray-100 text-gray-700'
+    
     const colors = {
       trial: 'bg-gray-100 text-gray-700',
       basic: 'bg-blue-100 text-blue-700',
@@ -88,9 +114,10 @@ export function AdminUsers() {
     const colors = {
       active: 'bg-green-100 text-green-700',
       suspended: 'bg-red-100 text-red-700',
-      inactive: 'bg-gray-100 text-gray-700'
+      cancelled: 'bg-orange-100 text-orange-700',
+      trial: 'bg-gray-100 text-gray-700'
     }
-    return colors[status as keyof typeof colors] || colors.inactive
+    return colors[status as keyof typeof colors] || colors.trial
   }
 
   if (loading) {
@@ -129,14 +156,41 @@ export function AdminUsers() {
     )
   }
 
+  const stats = {
+    total: users.length,
+    withSubscription: users.filter(u => u.hasSubscription).length,
+    adminGranted: users.filter(u => u.isAdminGranted).length,
+    active: users.filter(u => u.status === 'active').length
+  }
+
   return (
     <div className="bg-white rounded-lg border">
-      {/* Header */}
+      {/* Header with Stats */}
       <div className="p-6 border-b">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">User Management</h2>
           <div className="text-sm text-gray-500">
             {filteredUsers.length} of {users.length} users
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="bg-blue-50 p-3 rounded-lg">
+            <div className="text-sm text-blue-600 font-medium">Total Users</div>
+            <div className="text-xl font-bold text-blue-900">{stats.total}</div>
+          </div>
+          <div className="bg-green-50 p-3 rounded-lg">
+            <div className="text-sm text-green-600 font-medium">With Subscription</div>
+            <div className="text-xl font-bold text-green-900">{stats.withSubscription}</div>
+          </div>
+          <div className="bg-purple-50 p-3 rounded-lg">
+            <div className="text-sm text-purple-600 font-medium">Admin Granted</div>
+            <div className="text-xl font-bold text-purple-900">{stats.adminGranted}</div>
+          </div>
+          <div className="bg-orange-50 p-3 rounded-lg">
+            <div className="text-sm text-orange-600 font-medium">Active</div>
+            <div className="text-xl font-bold text-orange-900">{stats.active}</div>
           </div>
         </div>
 
@@ -146,13 +200,24 @@ export function AdminUsers() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search users..."
+              placeholder="Search users by name or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
           
+          <select
+            value={subscriptionFilter}
+            onChange={(e) => setSubscriptionFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Users</option>
+            <option value="has_subscription">Has Subscription</option>
+            <option value="no_subscription">No Subscription</option>
+            <option value="admin_granted">Admin Granted</option>
+          </select>
+
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -161,7 +226,8 @@ export function AdminUsers() {
             <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="suspended">Suspended</option>
-            <option value="inactive">Inactive</option>
+            <option value="trial">Trial</option>
+            <option value="cancelled">Cancelled</option>
           </select>
 
           <select
@@ -195,15 +261,36 @@ export function AdminUsers() {
           <tbody className="divide-y divide-gray-200">
             {filteredUsers.map((user) => (
               <tr key={user.id} className="hover:bg-gray-50">
+                {/* In AdminUsers.tsx, update the user row to show admin-granted flag: */}
                 <td className="py-4 px-6">
-                  <div>
-                    <div className="font-medium text-gray-900">{user.name}</div>
-                    <div className="text-sm text-gray-500">{user.email}</div>
+                  <div className="flex items-center space-x-3">
+                    {user.clerkData.imageUrl ? (
+                      <img 
+                        src={user.clerkData.imageUrl} 
+                        alt={user.name}
+                        className="w-8 h-8 rounded-full"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <span className="text-blue-600 text-sm font-medium">
+                          {user.name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-medium text-gray-900">{user.name}</div>
+                      <div className="text-sm text-gray-500">{user.email}</div>
+                      {user.isAdminGranted && (
+                        <div className="flex items-center gap-1">
+                          <div className="text-xs text-purple-600 font-medium">👑 Admin Granted</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </td>
                 <td className="py-4 px-6">
-                  <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${getPlanBadgeColor(user.plan)}`}>
-                    {user.plan}
+                  <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${getPlanBadgeColor(user.plan, user.hasSubscription)}`}>
+                    {user.hasSubscription ? user.plan : 'No Plan'}
                   </span>
                 </td>
                 <td className="py-4 px-6">
@@ -227,6 +314,30 @@ export function AdminUsers() {
                 </td>
                 <td className="py-4 px-6">
                   <div className="flex items-center space-x-2">
+                    {/* Grant/Revoke Subscription */}
+                    {!user.hasSubscription ? (
+                      <button
+                        onClick={() => handleGrantSubscription(user.id, user.email)}
+                        className="p-1 text-gray-400 hover:text-green-600"
+                        title="Grant Subscription"
+                      >
+                        <UserPlus className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (confirm(`Revoke subscription for ${user.email}?`)) {
+                            handleUserAction(user.id, 'revoke_subscription')
+                          }
+                        }}
+                        className="p-1 text-gray-400 hover:text-red-600"
+                        title="Revoke Subscription"
+                      >
+                        <UserX className="h-4 w-4" />
+                      </button>
+                    )}
+
+                    {/* View Details */}
                     <button
                       onClick={() => handleUserAction(user.id, 'view')}
                       className="p-1 text-gray-400 hover:text-blue-600"
@@ -235,6 +346,7 @@ export function AdminUsers() {
                       <Eye className="h-4 w-4" />
                     </button>
                     
+                    {/* Suspend/Activate */}
                     {user.status === 'active' ? (
                       <button
                         onClick={() => handleUserAction(user.id, 'suspend')}
@@ -252,18 +364,6 @@ export function AdminUsers() {
                         <Play className="h-4 w-4" />
                       </button>
                     )}
-                    
-                    <button
-                      onClick={() => {
-                        if (confirm(`Are you sure you want to delete user ${user.email}?`)) {
-                          handleUserAction(user.id, 'delete')
-                        }
-                      }}
-                      className="p-1 text-gray-400 hover:text-red-600"
-                      title="Delete User"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
                   </div>
                 </td>
               </tr>

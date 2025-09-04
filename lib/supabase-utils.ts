@@ -81,13 +81,13 @@ export class SupabaseExtraction {
     if (error) throw error
   }
 
-  // Save complete extraction results (interactions + references + errors) in one go
+  // Save complete extraction results - now supports 'partial' status
   static async saveExtractionResults(
     extractionId: string, 
     interactions: Interaction[], 
     references: Record<string, string>,
     errors: string[],
-    status: 'completed' | 'partial' | 'failed' = 'completed'
+    status: 'completed' | 'partial' | 'failed' | 'processing' = 'completed'  // Added 'partial'
   ): Promise<void> {
     // First save the data
     const { error } = await supabaseAdmin
@@ -95,9 +95,9 @@ export class SupabaseExtraction {
       .update({
         status: status,
         interaction_count: interactions.length,
-        interactions: interactions,  // Store as JSON directly!
-        source_references: references,  // Store as JSON directly!
-        errors: errors,  // Store as JSON directly!
+        interactions: interactions,
+        source_references: references,
+        errors: errors,
         updated_at: new Date().toISOString()
       })
       .eq('id', extractionId)
@@ -108,14 +108,14 @@ export class SupabaseExtraction {
     await this.updateExtractionTitleAndDisease(extractionId, interactions)
   }
 
-  // New helper method to complete extraction with proper disease type
+  // New helper method to complete extraction with proper disease type - supports 'partial'
   static async completeExtraction(
     extractionId: string,
     interactions: Interaction[],
     references: Record<string, string>,
     errors: string[],
     allPages: any[] = [],
-    status: 'completed' | 'partial' = 'completed'
+    status: 'completed' | 'partial' = 'completed'  // Added 'partial'
   ): Promise<{ diseaseType: string, title: string }> {
     
     // Save results first

@@ -206,11 +206,13 @@ export class BackgroundProcessor {
           
           try {
             // Extract interactions using existing logic with timeout handling
-            const { interactions, errors: interactionErrors } = await extractInteractionsFromPages(
+            const { interactions, errors: interactionErrors, stats: interactionStats } = await extractInteractionsFromPages(
               batchPages,
               'General' // We'll detect disease type later from all interactions
             )
-            
+
+            console.log(`📊 Batch stats: ${interactionStats.successfulBatches}/${interactionStats.totalBatches} successful, ${interactionStats.timeoutBatches} timeouts`)
+
             // Extract references using existing logic with timeout handling
             const { references, errors: referenceErrors } = await extractReferencesFromPages(batchPages)
             

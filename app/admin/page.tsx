@@ -1,4 +1,4 @@
-// app/admin/page.tsx - Final production-ready admin dashboard
+// app/admin/page.tsx - Fixed admin dashboard with working settings
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -18,12 +18,109 @@ export default function AdminPage() {
   const { user, isLoaded } = useUser()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'activity' | 'settings'>('overview')
+  
+  // Settings state
+  const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini')
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [grantEmail, setGrantEmail] = useState('')
+  const [grantPlan, setGrantPlan] = useState('pro')
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
 
   useEffect(() => {
     if (isLoaded && (!user || !ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || ''))) {
       router.push('/dashboard')
     }
   }, [user, isLoaded, router])
+
+  // Load settings when switching to settings tab
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      loadSettings()
+    }
+  }, [activeTab])
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch('/api/admin/settings')
+      if (response.ok) {
+        const data = await response.json()
+        setOpenaiModel(data.openai_model || 'gpt-4o-mini')
+        setAvailableModels(data.available_models || [])
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error)
+    }
+  }
+
+  const saveModelSettings = async () => {
+    setLoading(true)
+    setMessage('')
+    
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ openai_model: openaiModel })
+      })
+      
+      if (response.ok) {
+        setMessage('✅ Model settings saved successfully!')
+      } else {
+        setMessage('❌ Failed to save model settings')
+      }
+    } catch (error) {
+      setMessage('❌ Error saving settings')
+    } finally {
+      setLoading(false)
+      // Clear message after 3 seconds
+      setTimeout(() => setMessage(''), 3000)
+    }
+  }
+
+  const grantUserAccess = async () => {
+    if (!grantEmail.trim()) {
+      setMessage('❌ Please enter an email address')
+      return
+    }
+
+    if (!grantEmail.includes('@')) {
+      setMessage('❌ Please enter a valid email address')
+      return
+    }
+
+    setLoading(true)
+    setMessage('')
+    
+    try {
+      // First, we need to find the user by email using Clerk
+      // Since we don't have direct access to Clerk users from frontend,
+      // we'll pass the email to the backend and let it handle the lookup
+      const response = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'grant_access_by_email',
+          userEmail: grantEmail.trim(),
+          planType: grantPlan
+        })
+      })
+      
+      if (response.ok) {
+        setMessage(`✅ Access granted to ${grantEmail} (${grantPlan} plan)`)
+        setGrantEmail('')
+      } else {
+        const error = await response.json()
+        setMessage(`❌ ${error.error || 'Failed to grant access'}`)
+      }
+    } catch (error) {
+      setMessage('❌ Error granting access')
+    } finally {
+      setLoading(false)
+      // Clear message after 5 seconds
+      setTimeout(() => setMessage(''), 5000)
+    }
+  }
 
   if (!isLoaded) {
     return (
@@ -147,8 +244,89 @@ export default function AdminPage() {
               <h2 className="text-2xl font-bold text-gray-900 mb-2">System Settings</h2>
               <p className="text-gray-600">Configure system parameters and admin preferences.</p>
             </div>
+
+            {/* Status Message */}
+            {message && (
+              <div className={`p-3 rounded-md ${message.includes('✅') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                {message}
+              </div>
+            )}
+
+            {/* OpenAI Model Selection */}
+            <div className="bg-white rounded-lg border p-6">
+              <h3 className="text-lg font-semibold mb-4">OpenAI Configuration</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    OpenAI Model
+                  </label>
+                  <select 
+                    value={openaiModel}
+                    onChange={(e) => setOpenaiModel(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 w-full max-w-xs"
+                  >
+                    {availableModels.map(model => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Model used for all extractions. Changes apply to new extractions.
+                  </p>
+                </div>
+
+                <button 
+                  onClick={saveModelSettings}
+                  disabled={loading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? 'Saving...' : 'Save Model Settings'}
+                </button>
+              </div>
+            </div>
+
+            {/* User Subscription Management */}
+            <div className="bg-white rounded-lg border p-6">
+              <h3 className="text-lg font-semibold mb-4">Subscription Management</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Grant Free Access
+                  </label>
+                  <div className="flex gap-3">
+                    <input
+                      type="email"
+                      placeholder="user@example.com"
+                      value={grantEmail}
+                      onChange={(e) => setGrantEmail(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 flex-1 max-w-sm"
+                    />
+                    <select 
+                      value={grantPlan}
+                      onChange={(e) => setGrantPlan(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="basic">Basic Plan</option>
+                      <option value="pro">Pro Plan</option>
+                      <option value="enterprise">Enterprise Plan</option>
+                    </select>
+                    <button 
+                      onClick={grantUserAccess}
+                      disabled={loading}
+                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {loading ? 'Granting...' : 'Grant Access'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Instantly grant free access to any user by email address. User must be registered in Clerk.
+                  </p>
+                </div>
+              </div>
+            </div>
             
-            {/* Settings Panel */}
+            {/* Rest of existing settings... */}
             <div className="bg-white rounded-lg border p-6">
               <h3 className="text-lg font-semibold mb-4">Admin Configuration</h3>
               
@@ -196,6 +374,10 @@ export default function AdminPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-700">/api/admin/activity</span>
+                        <span className="text-green-600 font-medium">Active</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-700">/api/admin/settings</span>
                         <span className="text-green-600 font-medium">Active</span>
                       </div>
                     </div>

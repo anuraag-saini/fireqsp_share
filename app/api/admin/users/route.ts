@@ -1,16 +1,22 @@
-// app/api/admin/users/route.ts - Fixed ESLint errors
+// app/api/admin/users/route.ts - Fetch from Clerk + Subscription Management
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, handleAuthError } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { createClerkClient } from '@clerk/nextjs/server'
 
 const ADMIN_EMAILS = [
   'asaini.anuraags@gmail.com',
   'admin@fireqsp.com'
 ]
 
+// Initialize Clerk client
+const clerkClient = createClerkClient({
+  secretKey: process.env.CLERK_SECRET_KEY!
+})
+
 export async function GET() {
   try {
-    console.log('👥 Admin users API called')
+    console.log('👥 Admin users API called - fetching from Clerk')
     
     const user = await requireAuth()
     
@@ -19,30 +25,35 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 })
     }
 
-    console.log('✅ Admin users access granted, using supabaseAdmin client')
+    console.log('✅ Admin users access granted, fetching from Clerk...')
 
-    // Get users from user_subscriptions
-    const { data: users, error } = await supabaseAdmin
+    // Get users from Clerk with correct syntax
+    const clerkUsers = await clerkClient.users.getUserList({
+      limit: 100,
+      orderBy: '-created_at'
+    })
+
+    console.log(`📋 Found ${clerkUsers.data?.length || 0} users from Clerk`)
+
+    // Get subscription data from Supabase for all users
+    const { data: subscriptions } = await supabaseAdmin
       .from('user_subscriptions')
       .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100)
 
-    if (error) {
-      console.error('❌ Supabase users error:', error)
-      throw error
-    }
+    const subscriptionMap = new Map(
+      (subscriptions || []).map(sub => [sub.user_id, sub])
+    )
 
-    console.log(`📋 Found ${users?.length || 0} users`)
-
-    // Enrich with extraction data
+    // Enrich Clerk users with subscription and extraction data
     const enrichedUsers = await Promise.all(
-      (users || []).map(async (user) => {
+      clerkUsers.data.map(async (clerkUser) => {
+        const subscription = subscriptionMap.get(clerkUser.id)
+        
         // Get extraction count
         const { count: extractionsCount } = await supabaseAdmin
           .from('extractions')
           .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.user_id)
+          .eq('user_id', clerkUser.id)
 
         // Get recent extractions (30 days)
         const thirtyDaysAgo = new Date()
@@ -51,52 +62,53 @@ export async function GET() {
         const { count: recentExtractions } = await supabaseAdmin
           .from('extractions')
           .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.user_id)
+          .eq('user_id', clerkUser.id)
           .gte('created_at', thirtyDaysAgo.toISOString())
 
         // Calculate spending (simplified)
         let totalSpent = 0
-        const userStatus = user.status || 'active'
-        if (userStatus === 'active') {
+        const planType = subscription?.plan_type || 'trial'
+        const userStatus = subscription?.status || 'trial'
+        
+        if (userStatus === 'active' && subscription) {
           const monthsActive = Math.max(1, Math.ceil(
-            (new Date().getTime() - new Date(user.created_at).getTime()) / 
+            (new Date().getTime() - new Date(subscription.created_at).getTime()) / 
             (1000 * 60 * 60 * 24 * 30)
           ))
           
-          switch (user.plan_type) {
+          switch (planType) {
             case 'basic': totalSpent = 19 * Math.min(monthsActive, 12); break
             case 'pro': totalSpent = 99 * Math.min(monthsActive, 12); break
             case 'enterprise': totalSpent = 299 * Math.min(monthsActive, 12); break
-            case 'trial': totalSpent = 0; break
+            default: totalSpent = 0; break
           }
         }
 
-        // Clean email display - handle different email patterns
-        let displayEmail = user.user_email
-        if (user.user_email.includes('@placeholder.com')) {
-          displayEmail = user.user_email.replace('existing-user-', '').replace('@placeholder.com', '@unknown.com')
-        } else if (user.user_email.includes('clerk-error')) {
-          displayEmail = 'clerk-fetch-error@unknown.com'
-        } else if (user.user_email === 'email-fetch-failed') {
-          displayEmail = 'email-fetch-failed@unknown.com'
-        }
-
         return {
-          id: user.user_id,
-          email: displayEmail,
-          name: displayEmail.split('@')[0],
-          plan: user.plan_type || 'trial',
+          id: clerkUser.id,
+          email: clerkUser.emailAddresses[0]?.emailAddress || 'No email',
+          name: `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 
+                clerkUser.emailAddresses[0]?.emailAddress?.split('@')[0] || 'Unknown',
+          plan: planType,
           status: userStatus,
-          joinDate: user.created_at,
-          lastActive: user.last_active || user.created_at,
+          joinDate: new Date(clerkUser.createdAt).toISOString(),
+          lastActive: clerkUser.lastSignInAt ? new Date(clerkUser.lastSignInAt).toISOString() : 
+                     new Date(clerkUser.createdAt).toISOString(),
           extractionsCount: extractionsCount || 0,
           apiCallsThisMonth: recentExtractions || 0,
-          totalSpent: Math.round(totalSpent)
+          totalSpent: Math.round(totalSpent),
+          hasSubscription: !!subscription,
+          isAdminGranted: subscription?.granted_by_admin || false,
+          clerkData: {
+            imageUrl: clerkUser.imageUrl,
+            username: clerkUser.username,
+            phoneNumbers: clerkUser.phoneNumbers.map(p => p.phoneNumber)
+          }
         }
       })
     )
 
-    console.log(`✅ Enriched ${enrichedUsers.length} users with extraction data`)
+    console.log(`✅ Enriched ${enrichedUsers.length} users with subscription and extraction data`)
 
     return NextResponse.json({ users: enrichedUsers })
     
@@ -114,7 +126,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 })
     }
 
-    const { userId, action } = await request.json()
+    const { userId, action, planType } = await request.json()
 
     if (!userId || !action) {
       return NextResponse.json({ error: 'Missing userId or action' }, { status: 400 })
@@ -123,10 +135,46 @@ export async function POST(request: NextRequest) {
     console.log(`🔧 Admin action: ${action} for user: ${userId}`)
 
     switch (action) {
+      case 'grant_subscription': {
+        const plan = planType || 'pro'
+        
+        // Upsert subscription
+        await supabaseAdmin
+          .from('user_subscriptions')
+          .upsert({
+            user_id: userId,
+            plan_type: plan,
+            status: 'active',
+            granted_by_admin: true,
+            expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        
+        console.log(`✅ Granted ${plan} subscription to user ${userId}`)
+        break
+      }
+
+      case 'revoke_subscription': {
+        await supabaseAdmin
+          .from('user_subscriptions')
+          .update({ 
+            status: 'cancelled',
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId)
+        
+        console.log(`✅ Revoked subscription for user ${userId}`)
+        break
+      }
+
       case 'suspend': {
         await supabaseAdmin
           .from('user_subscriptions')
-          .update({ status: 'suspended' })
+          .update({ 
+            status: 'suspended',
+            updated_at: new Date().toISOString()
+          })
           .eq('user_id', userId)
         break
       }
@@ -134,26 +182,26 @@ export async function POST(request: NextRequest) {
       case 'activate': {
         await supabaseAdmin
           .from('user_subscriptions')
-          .update({ status: 'active' })
-          .eq('user_id', userId)
-        break
-      }
-
-      case 'delete': {
-        await supabaseAdmin
-          .from('user_subscriptions')
-          .update({ status: 'deleted' })
+          .update({ 
+            status: 'active',
+            updated_at: new Date().toISOString()
+          })
           .eq('user_id', userId)
         break
       }
 
       case 'view': {
-        const { data: userDetails } = await supabaseAdmin
+        // Get detailed user info from Clerk
+        const clerkUser = await clerkClient.users.getUser(userId)
+        
+        // Get subscription details
+        const { data: userSubscription } = await supabaseAdmin
           .from('user_subscriptions')
           .select('*')
           .eq('user_id', userId)
           .single()
         
+        // Get recent extractions
         const { data: userExtractions } = await supabaseAdmin
           .from('extractions')
           .select('*')
@@ -162,9 +210,54 @@ export async function POST(request: NextRequest) {
           .limit(10)
         
         return NextResponse.json({ 
-          user: userDetails,
+          user: {
+            ...clerkUser,
+            subscription: userSubscription
+          },
           extractions: userExtractions || []
         })
+      }
+
+      case 'ban_user': {
+        // Ban user in Clerk (this will prevent login)
+        await clerkClient.users.banUser(userId)
+        
+        // Also suspend subscription
+        await supabaseAdmin
+          .from('user_subscriptions')
+          .update({ 
+            status: 'suspended',
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId)
+        
+        console.log(`✅ Banned user ${userId} in Clerk and suspended subscription`)
+        break
+      }
+
+      case 'unban_user': {
+        // Unban user in Clerk
+        await clerkClient.users.unbanUser(userId)
+        
+        // Reactivate subscription if exists
+        const { data: subscription } = await supabaseAdmin
+          .from('user_subscriptions')
+          .select('*')
+          .eq('user_id', userId)
+          .single()
+
+        if (subscription) {
+          await supabaseAdmin
+            .from('user_subscriptions')
+            .update({ 
+              status: 'active',
+              updated_at: new Date().toISOString()
+            })
+            .eq('user_id', userId)
+        }
+        
+        console.log(`✅ Unbanned user ${userId} in Clerk and reactivated subscription`)
+        break
       }
 
       default:

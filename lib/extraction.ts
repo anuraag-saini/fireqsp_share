@@ -14,11 +14,24 @@ export interface ExtractionProgress {
   totalBatches?: number
 }
 
+export interface ExtractionResult {
+  interactions: Interaction[]
+  errors: string[]
+  stats: {
+    totalBatches: number
+    successfulBatches: number
+    failedBatches: number
+    timeoutBatches: number
+    totalPages: number
+    processedPages: number
+  }
+}
+
 // Add timeout wrapper function
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => {
-      reject( new Error(`${operation} timed out after ${timeoutMs / 1000} seconds`))
+      reject(new Error(`TIMEOUT: ${operation} timed out after ${timeoutMs / 1000} seconds`))
     }, timeoutMs)
   })
   
@@ -29,10 +42,18 @@ export async function extractInteractionsFromPages(
   documentPages: DocumentPage[], 
   diseaseType: string,
   onProgress?: (progress: ExtractionProgress) => void
-): Promise<{ interactions: Interaction[], errors: string[] }> {
+): Promise<ExtractionResult> {
   
   const extractedInteractions: Interaction[] = []
   const extractionErrors: string[] = []
+  const stats = {
+    totalBatches: 0,
+    successfulBatches: 0,
+    failedBatches: 0,
+    timeoutBatches: 0,
+    totalPages: documentPages.length,
+    processedPages: 0
+  }
   
   // Group pages by file
   const pagesByFile = groupPagesByFile(documentPages)
@@ -50,9 +71,16 @@ export async function extractInteractionsFromPages(
     })
     
     try {
-      const { interactions, errors } = await processFilePages(filePages, diseaseType, fileName)
-      extractedInteractions.push(...interactions)
-      extractionErrors.push(...errors)
+      const result = await processFilePages(filePages, diseaseType, fileName)
+      extractedInteractions.push(...result.interactions)
+      extractionErrors.push(...result.errors)
+      
+      // Accumulate stats
+      stats.totalBatches += result.stats.totalBatches
+      stats.successfulBatches += result.stats.successfulBatches
+      stats.failedBatches += result.stats.failedBatches
+      stats.timeoutBatches += result.stats.timeoutBatches
+      stats.processedPages += result.stats.processedPages
       
       onProgress?.({
         fileIndex,
@@ -74,38 +102,56 @@ export async function extractInteractionsFromPages(
     }
   }
   
-  return { interactions: extractedInteractions, errors: extractionErrors }
+  // Log final stats
+  console.log(`📊 Extraction Stats: ${stats.successfulBatches}/${stats.totalBatches} batches succeeded, ${stats.timeoutBatches} timed out, ${stats.processedPages}/${stats.totalPages} pages processed`)
+  
+  return { 
+    interactions: extractedInteractions, 
+    errors: extractionErrors,
+    stats
+  }
 }
 
 async function processFilePages(
   pages: DocumentPage[], 
   diseaseType: string, 
   fileName: string
-): Promise<{ interactions: Interaction[], errors: string[] }> {
+): Promise<ExtractionResult> {
   
   const interactions: Interaction[] = []
   const errors: string[] = []
+  const stats = {
+    totalBatches: 0,
+    successfulBatches: 0,
+    failedBatches: 0,
+    timeoutBatches: 0,
+    totalPages: pages.length,
+    processedPages: 0
+  }
   
-  // Batch processing logic from Streamlit
+  // Batch processing logic
   const batchSize = EXTRACTION_CONFIG.BATCH_SIZE
+  const totalBatches = Math.ceil(pages.length / batchSize)
+  stats.totalBatches = totalBatches
   
   for (let i = 0; i < pages.length; i += batchSize) {
+    const batchIndex = Math.floor(i / batchSize) + 1
     const batch = pages.slice(i, i + batchSize)
     const combinedText = batch.map(doc => doc.page_content).join('\n\n')
     const pageNumbers = batch.map(doc => doc.metadata.page).join(',')
+    
+    console.log(`🔄 Processing batch ${batchIndex}/${totalBatches} for ${fileName} (${batch.length} pages)`)
     
     try {
       // Add 10 minute timeout for OpenAI call
       const result = await withTimeout(
         callOpenAIForExtraction(combinedText, pageNumbers, diseaseType),
         10 * 60 * 1000, // 10 minutes
-        `OpenAI extraction for batch ${Math.floor(i/batchSize) + 1} of ${fileName}`
+        `OpenAI extraction for batch ${batchIndex} of ${fileName}`
       )
       
       if (result.interactions) {
         result.interactions.forEach((interaction: any, index: number) => {
-          console.log(`=== Processing interaction ${index} in batch ===`)
-          
           const processedInteraction: Interaction = {
             ...interaction,
             filename: fileName,
@@ -114,15 +160,19 @@ async function processFilePages(
             page_number: interaction.page_number || pageNumbers
           }
           
-          console.log(`=== End processing interaction ${index} ===\n`)
-          
           interactions.push(processedInteraction)
         })
+        
+        stats.successfulBatches++
+        stats.processedPages += batch.length
+        console.log(`✅ Batch ${batchIndex}/${totalBatches} succeeded: ${result.interactions.length} interactions`)
       }
       
-      // Fallback logic from Streamlit
+      // Fallback logic for low-yield batches
       if (result.interactions.length < batch.length * EXTRACTION_CONFIG.FALLBACK_THRESHOLD) {
-        errors.push(`Batch ${Math.floor(i/batchSize) + 1} yielded only ${result.interactions.length} interactions for ${batch.length} pages; reprocessing individually.`)
+        const fallbackMessage = `Batch ${batchIndex} yielded only ${result.interactions.length} interactions for ${batch.length} pages; reprocessing individually.`
+        errors.push(fallbackMessage)
+        console.log(`⚠️ ${fallbackMessage}`)
         
         // Process individual pages with timeout
         for (const doc of batch) {
@@ -134,9 +184,7 @@ async function processFilePages(
             )
             
             if (individualResult.interactions) {
-              individualResult.interactions.forEach((interaction: any, index: number) => {
-                console.log(`=== Processing individual interaction ${index} ===`)
-                
+              individualResult.interactions.forEach((interaction: any) => {
                 const processedInteraction: Interaction = {
                   ...interaction,
                   filename: fileName,
@@ -145,26 +193,46 @@ async function processFilePages(
                   page_number: interaction.page_number || doc.metadata.page.toString()
                 }
                 
-                console.log(`=== End processing individual interaction ${index} ===\n`)
-                
                 interactions.push(processedInteraction)
               })
             }
+            console.log(`✅ Individual page ${doc.metadata.page} processed`)
+            
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error)
+            const isTimeout = errorMsg.includes('TIMEOUT')
+            
             errors.push(`Page ${doc.metadata.page} failed: ${errorMsg}`)
-            console.log(`⚠️ Skipping page ${doc.metadata.page} of ${fileName} due to timeout/error: ${errorMsg}`)
+            
+            if (isTimeout) {
+              console.log(`⏰ Page ${doc.metadata.page} of ${fileName} timed out after 10 minutes`)
+            } else {
+              console.log(`❌ Page ${doc.metadata.page} of ${fileName} failed: ${errorMsg}`)
+            }
           }
         }
       }
+      
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
-      errors.push(`Batch ${Math.floor(i/batchSize) + 1} failed: ${errorMsg}`)
-      console.log(`⚠️ Skipping batch ${Math.floor(i/batchSize) + 1} of ${fileName} due to timeout/error: ${errorMsg}`)
+      const isTimeout = errorMsg.includes('TIMEOUT')
+      
+      errors.push(`Batch ${batchIndex} failed: ${errorMsg}`)
+      
+      if (isTimeout) {
+        stats.timeoutBatches++
+        console.log(`⏰ Batch ${batchIndex}/${totalBatches} of ${fileName} timed out after 10 minutes - skipping to next batch`)
+      } else {
+        stats.failedBatches++
+        console.log(`❌ Batch ${batchIndex}/${totalBatches} of ${fileName} failed: ${errorMsg}`)
+      }
     }
   }
   
-  return { interactions, errors }
+  const successRate = stats.totalBatches > 0 ? (stats.successfulBatches / stats.totalBatches * 100).toFixed(1) : '0'
+  console.log(`📈 ${fileName} completed: ${stats.successfulBatches}/${stats.totalBatches} batches (${successRate}%), ${stats.timeoutBatches} timeouts, ${interactions.length} interactions`)
+  
+  return { interactions, errors, stats }
 }
 
 export async function extractReferencesFromPages(
@@ -199,11 +267,19 @@ export async function extractReferencesFromPages(
       
       if (referenceString && !['', 'none', 'not found', 'n/a', 'cannot identify', 'not applicable'].includes(referenceString.toLowerCase())) {
         references[fileName] = referenceString
+        console.log(`✅ Reference extracted for ${fileName}`)
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
+      const isTimeout = errorMsg.includes('TIMEOUT')
+      
       referenceErrors.push(`Failed to extract reference for file ${fileName}: ${errorMsg}`)
-      console.log(`⚠️ Skipping reference extraction for ${fileName} due to timeout/error: ${errorMsg}`)
+      
+      if (isTimeout) {
+        console.log(`⏰ Reference extraction for ${fileName} timed out after 5 minutes`)
+      } else {
+        console.log(`❌ Reference extraction for ${fileName} failed: ${errorMsg}`)
+      }
     }
   }
   
@@ -237,14 +313,24 @@ export async function extractDiseaseTypeFromPages(
     )
     
     if (diseaseType && diseaseType.trim() && !['', 'none', 'not found', 'unknown'].includes(diseaseType.toLowerCase())) {
+      console.log(`✅ Disease type detected: ${diseaseType}`)
       return { diseaseType: diseaseType.trim(), errors: [] }
     } else {
+      console.log(`ℹ️ No specific disease type detected, using 'General'`)
       return { diseaseType: 'General', errors: [] }
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
+    const isTimeout = errorMsg.includes('TIMEOUT')
+    
     diseaseErrors.push(`Failed to extract disease type: ${errorMsg}`)
-    console.log(`⚠️ Using 'General' as disease type due to timeout/error: ${errorMsg}`)
+    
+    if (isTimeout) {
+      console.log(`⏰ Disease type detection timed out after 3 minutes, using 'General'`)
+    } else {
+      console.log(`❌ Disease type detection failed: ${errorMsg}, using 'General'`)
+    }
+    
     return { diseaseType: 'General', errors: diseaseErrors }
   }
 }
@@ -252,8 +338,11 @@ export async function extractDiseaseTypeFromPages(
 async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
   const { DISEASE_TYPE_PROMPT } = await import('./prompts')
   
+  // Get dynamic model
+  const model = await getOpenAIModel()
+  
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model,
     messages: [
       {
         role: 'system',
@@ -274,11 +363,16 @@ async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
 async function callOpenAIForExtraction(text: string, pageNumbers: string, diseaseType: string) {
   const promptTemplate = getPromptForDiseaseType(diseaseType)
   
+  // Get dynamic model
+  const model = await getOpenAIModel()
+  
   console.log('=== OpenAI Extraction Debug ===')
   console.log('Disease type:', diseaseType)
+  console.log('Using model:', model)
+  console.log('Text length:', text.length)
   
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model,
     messages: [
       {
         role: 'system',
@@ -294,7 +388,6 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
   })
   
   const content = response.choices[0]?.message?.content
-  console.log('=== Raw OpenAI Response ===')
   
   if (content) {
     // Clean the text like in Streamlit
@@ -302,16 +395,12 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
     
     try {
       const parsed = JSON.parse(cleanedText)
-      console.log('=== Parsed OpenAI JSON ===')
-      
-      if (parsed.interactions && parsed.interactions.length > 0) {
-        console.log('Source type:', typeof parsed.interactions[0]?.source)
-        console.log('Target type:', typeof parsed.interactions[0]?.target)
-      }
+      console.log(`✅ OpenAI returned ${parsed.interactions?.length || 0} interactions`)
       
       return parsed
     } catch (parseError) {
       console.error('JSON parsing error:', parseError)
+      console.error('Failed to parse content:', cleanedText.substring(0, 200) + '...')
       return { interactions: [] }
     }
   }
@@ -322,8 +411,11 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
 async function callOpenAIForReferences(text: string, pageNumbers: string) {
   const { REFERENCE_PROMPT } = await import('./prompts')
   
+  // Get dynamic model
+  const model = await getOpenAIModel()
+  
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model,
     messages: [
       {
         role: 'system',
@@ -338,6 +430,29 @@ async function callOpenAIForReferences(text: string, pageNumbers: string) {
   })
   
   return response.choices[0]?.message?.content?.trim() || ''
+}
+
+// Helper function to get OpenAI model from settings
+async function getOpenAIModel(): Promise<string> {
+  try {
+    const { createClient } = await import('@supabase/supabase-js')
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    
+    const { data } = await supabase
+      .from('system_settings')
+      .select('openai_model')
+      .single()
+    
+    const model = data?.openai_model || 'gpt-4o-mini'
+    console.log(`🤖 Using OpenAI model: ${model}`)
+    return model
+  } catch (error) {
+    console.log('⚠️ Using default model due to error:', error)
+    return 'gpt-4o-mini'
+  }
 }
 
 function groupPagesByFile(pages: DocumentPage[]): Record<string, DocumentPage[]> {

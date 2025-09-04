@@ -1,8 +1,8 @@
-// components/AdminActivity.tsx - Fixed ESLint errors
+// components/AdminActivity.tsx - Updated for 4 status types
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Activity, User, AlertCircle, CheckCircle, Clock, RefreshCw } from 'lucide-react'
+import { Activity, User, AlertCircle, CheckCircle, Clock, RefreshCw, AlertTriangle } from 'lucide-react'
 
 interface ActivityItem {
   id: string
@@ -52,12 +52,16 @@ export function AdminActivity() {
     }
     
     if (action.includes('Extraction')) {
-      if (status === 'completed') {
-        return <CheckCircle className="h-5 w-5 text-green-600" />
-      } else if (status === 'failed') {
-        return <AlertCircle className="h-5 w-5 text-red-600" />
-      } else {
-        return <Clock className="h-5 w-5 text-yellow-600" />
+      switch (status) {
+        case 'completed':
+          return <CheckCircle className="h-5 w-5 text-green-600" />
+        case 'failed':
+          return <AlertCircle className="h-5 w-5 text-red-600" />
+        case 'partial':
+          return <AlertTriangle className="h-5 w-5 text-orange-600" />
+        case 'processing':
+        default:
+          return <Clock className="h-5 w-5 text-yellow-600" />
       }
     }
     
@@ -70,16 +74,40 @@ export function AdminActivity() {
     }
     
     if (action.includes('Extraction')) {
-      if (status === 'completed') {
-        return 'bg-green-100 text-green-700'
-      } else if (status === 'failed') {
-        return 'bg-red-100 text-red-700'
-      } else {
-        return 'bg-yellow-100 text-yellow-700'
+      switch (status) {
+        case 'completed':
+          return 'bg-green-100 text-green-700'
+        case 'failed':
+          return 'bg-red-100 text-red-700'
+        case 'partial':
+          return 'bg-orange-100 text-orange-700'
+        case 'processing':
+        default:
+          return 'bg-yellow-100 text-yellow-700'
       }
     }
     
     return 'bg-gray-100 text-gray-700'
+  }
+
+  const getStatusBadge = (status?: string) => {
+    if (!status) return null
+
+    const statusLabels = {
+      completed: { label: 'Completed', color: 'bg-green-100 text-green-700' },
+      failed: { label: 'Failed', color: 'bg-red-100 text-red-700' },
+      partial: { label: 'Partial', color: 'bg-orange-100 text-orange-700' },
+      processing: { label: 'Processing', color: 'bg-yellow-100 text-yellow-700' }
+    }
+
+    const statusInfo = statusLabels[status as keyof typeof statusLabels]
+    if (!statusInfo) return null
+
+    return (
+      <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${statusInfo.color}`}>
+        {statusInfo.label}
+      </span>
+    )
   }
 
   const formatTimeAgo = (timestamp: string) => {
@@ -135,11 +163,34 @@ export function AdminActivity() {
     )
   }
 
+  // Calculate stats for header
+  const stats = activities.reduce((acc, activity) => {
+    if (activity.action.includes('Extraction')) {
+      switch (activity.status) {
+        case 'completed':
+          acc.completed++
+          break
+        case 'failed':
+          acc.failed++
+          break
+        case 'partial':
+          acc.partial++
+          break
+        case 'processing':
+          acc.processing++
+          break
+      }
+    } else if (activity.action.includes('Registration')) {
+      acc.registrations++
+    }
+    return acc
+  }, { completed: 0, failed: 0, partial: 0, processing: 0, registrations: 0 })
+
   return (
     <div className="bg-white rounded-lg border">
-      {/* Header */}
+      {/* Header with Stats */}
       <div className="p-6 border-b">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Recent Activity</h2>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">
@@ -153,6 +204,34 @@ export function AdminActivity() {
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-6 gap-2 text-center">
+          <div className="bg-green-50 p-2 rounded">
+            <div className="text-xs text-green-600 font-medium">Completed</div>
+            <div className="text-lg font-bold text-green-900">{stats.completed}</div>
+          </div>
+          <div className="bg-orange-50 p-2 rounded">
+            <div className="text-xs text-orange-600 font-medium">Partial</div>
+            <div className="text-lg font-bold text-orange-900">{stats.partial}</div>
+          </div>
+          <div className="bg-yellow-50 p-2 rounded">
+            <div className="text-xs text-yellow-600 font-medium">Processing</div>
+            <div className="text-lg font-bold text-yellow-900">{stats.processing}</div>
+          </div>
+          <div className="bg-red-50 p-2 rounded">
+            <div className="text-xs text-red-600 font-medium">Failed</div>
+            <div className="text-lg font-bold text-red-900">{stats.failed}</div>
+          </div>
+          <div className="bg-blue-50 p-2 rounded">
+            <div className="text-xs text-blue-600 font-medium">Registrations</div>
+            <div className="text-lg font-bold text-blue-900">{stats.registrations}</div>
+          </div>
+          <div className="bg-gray-50 p-2 rounded">
+            <div className="text-xs text-gray-600 font-medium">Total</div>
+            <div className="text-lg font-bold text-gray-900">{activities.length}</div>
           </div>
         </div>
       </div>
@@ -176,10 +255,11 @@ export function AdminActivity() {
                   
                   {/* Content */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${getActivityBadgeColor(activity.action, activity.status)}`}>
                         {activity.action}
                       </span>
+                      {activity.action.includes('Extraction') && getStatusBadge(activity.status)}
                       <span className="text-xs text-gray-500">
                         {formatTimeAgo(activity.timestamp)}
                       </span>
@@ -187,7 +267,7 @@ export function AdminActivity() {
                     
                     <div className="text-sm text-gray-900 mb-1">
                       <span className="font-medium">{activity.userEmail}</span>
-                      {activity.title && activity.title !== 'User Registration' && (
+                      {activity.title && activity.title !== 'User Registration' && activity.title !== 'Processing...' && (
                         <span className="text-gray-600"> • {activity.title}</span>
                       )}
                     </div>
