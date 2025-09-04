@@ -13,6 +13,58 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// Centralized function to update disease type and title (same as in background-processor)
+async function updateExtractionTitleAndDisease(
+  extractionId: string,
+  interactions: any[],
+  allPages: any[] = []
+): Promise<{ diseaseType: string, title: string }> {
+  let diseaseType = 'Processing'
+  let title = diseaseType
+  
+  console.log('🔍 Updating title and disease type...')
+  
+  try {
+    if (interactions.length > 0) {
+      // Create sample pages from interactions for disease detection
+      const samplePages = interactions.slice(0, 5).map((int: any, index: number) => ({
+        page_content: int.reference_text || int.details || int.mechanism,
+        metadata: { page: index + 1, file_name: int.filename || 'unknown' }
+      }))
+      
+      const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(samplePages)
+      // Use the detected disease type as both diseaseType and title
+      diseaseType = detectedType || 'General'
+      title = diseaseType
+      
+    } else if (allPages.length > 0) {
+      // Fallback: use actual pages if no interactions
+      const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(allPages.slice(0, 3))
+      diseaseType = detectedType || 'General'
+      title = diseaseType
+    }
+    
+  } catch (error) {
+    console.error('Disease type detection failed:', error)
+    diseaseType = 'General'
+    title = diseaseType
+  }
+  
+  // Update the extraction record
+  await supabase
+    .from('extractions')
+    .update({
+      title: title,
+      disease_type: diseaseType,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', extractionId)
+  
+  console.log(`✅ Updated extraction ${extractionId}: title="${title}", diseaseType="${diseaseType}"`)
+  
+  return { diseaseType, title }
+}
+
 export async function POST(request: NextRequest) {
   let extraction: any = null
   
@@ -46,10 +98,10 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Create extraction record with all required fields
+    // Create extraction record with 'Processing' as initial state
     extraction = await SupabaseExtraction.createExtraction({
       user_id: user.id,
-      title: 'Processing...',
+      title: 'Processing',
       status: 'processing',
       file_count: files.length,
       interaction_count: 0,
@@ -57,7 +109,7 @@ export async function POST(request: NextRequest) {
       source_references: null,
       errors: null,
       job_id: null,
-      disease_type: 'General'
+      disease_type: 'Processing'
     })
 
     // Process all files together
@@ -89,10 +141,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (allPages.length === 0) {
+      // Update to 'General' if no content could be extracted
       await supabase
         .from('extractions')
         .update({ 
           status: 'failed',
+          title: 'General',
+          disease_type: 'General',
           errors: fileErrors,
           updated_at: new Date().toISOString()
         })
@@ -106,18 +161,16 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`Total pages extracted: ${allPages.length}`)
-    console.log('Extracting disease type from content...')
-    const { diseaseType, errors: diseaseErrors } = await extractDiseaseTypeFromPages(allPages)
-    console.log(`Detected disease type: ${diseaseType}`)
-
+    
+    // Extract interactions first (with timeout handling from updated extraction.ts)
     const { interactions, errors: interactionErrors } = await extractInteractionsFromPages(
       allPages,
-      diseaseType
+      'General' // We'll detect disease type from results
     )
 
     const { references, errors: referenceErrors } = await extractReferencesFromPages(allPages)
 
-    const allErrors = [...fileErrors, ...diseaseErrors, ...interactionErrors, ...referenceErrors]
+    const allErrors = [...fileErrors, ...interactionErrors, ...referenceErrors]
     
     console.log(`Extracted ${interactions.length} interactions`)
 
@@ -129,43 +182,11 @@ export async function POST(request: NextRequest) {
       )?.metadata?.file_name || 'Unknown'
     }))
 
-    if (interactionsWithFilename.length === 0) {
-      await supabase
-        .from('extractions')
-        .update({
-          status: 'completed',
-          interactions: [],
-          source_references: references,
-          errors: [...allErrors, 'No interactions found in the uploaded documents'],
-          interaction_count: 0,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', extraction.id)
-
-      return NextResponse.json({
-        extraction_id: extraction.id,
-        interactions: [],
-        references,
-        errors: [...allErrors, 'No interactions found in the uploaded documents'],
-        summary: {
-          totalFiles: files.length,
-          totalInteractions: 0,
-          filesWithErrors: fileErrors.length
-        },
-        message: 'No interactions found'
-      })
-    }
-
-    // Create proper title
-    const baseTitle = diseaseType && diseaseType !== 'General' ? diseaseType : 'Untitled'
-
-    // Save all results to database using direct supabase call
+    // Always save results first, then update disease type
     await supabase
       .from('extractions')
       .update({
         status: 'completed',
-        title: baseTitle,
-        disease_type: diseaseType,
         interactions: interactionsWithFilename,
         source_references: references,
         errors: allErrors,
@@ -173,6 +194,13 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString()
       })
       .eq('id', extraction.id)
+
+    // Now update disease type and title using centralized function
+    const { diseaseType, title } = await updateExtractionTitleAndDisease(
+      extraction.id, 
+      interactionsWithFilename, 
+      allPages
+    )
 
     const result = {
       extraction_id: extraction.id,
@@ -200,7 +228,7 @@ export async function POST(request: NextRequest) {
     // Cache the result
     SupabaseExtraction.setCachedResult(cacheKey, result, 24)
 
-    console.log(`Extraction complete: ${interactionsWithFilename.length} interactions found`)
+    console.log(`Extraction complete: ${interactionsWithFilename.length} interactions found, disease: ${diseaseType}`)
 
     // Track usage
     try {
@@ -219,10 +247,13 @@ export async function POST(request: NextRequest) {
     
     if (extraction?.id) {
       try {
+        // Even on error, set to 'General' instead of leaving as 'Processing'
         await supabase
           .from('extractions')
           .update({ 
             status: 'failed',
+            title: 'General',
+            disease_type: 'General',
             errors: [error instanceof Error ? error.message : 'Unknown error'],
             updated_at: new Date().toISOString()
           })

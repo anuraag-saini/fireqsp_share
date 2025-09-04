@@ -324,15 +324,15 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
         )}
 
         {/* Large Upload Warning */}
-        {files.length > 0 && isLargeUpload() && !isExtracting && (
+        {/* {files.length > 0 && isLargeUpload() && !isExtracting && (
           <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-3xl flex items-center gap-2">
             <Clock className="h-4 w-4 text-amber-600" />
             <div className="text-amber-700 text-sm">
-              {/* <span className="font-medium">Large upload detected!</span> 
-              <span className="text-amber-600"> Files will be uploaded to secure storage first, then processed in the background.</span> */}
+              <span className="font-medium">Large upload detected!</span> 
+              <span className="text-amber-600"> Files will be uploaded to secure storage first, then processed in the background.</span>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Loading State */}
         {isExtracting && (

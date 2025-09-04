@@ -2,10 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/nextjs'
+import { useAppStore } from '@/stores/appStore'
+import { useRouter } from 'next/navigation'
 
 export default function Home() {
   // Mock authentication state for demo
   const { isSignedIn, user, isLoaded } = useUser()
+  const { currentStep, clearAll, setCurrentStep, setExtractionResults } = useAppStore()
+  const router = useRouter()
   
   // Animation state
   const [currentWordIndex, setCurrentWordIndex] = useState(0)
@@ -14,6 +18,12 @@ export default function Home() {
   const [typingSpeed, setTypingSpeed] = useState(150)
 
   const words = ['Rare Diseases', 'Oncology', 'AutoImmune Diseases', 'Metabolic Diseases']
+
+  const handleNewExtraction = () => {
+    clearAll()
+    setCurrentStep('upload')
+    router.push('/dashboard') // Add navigation
+  }
 
   useEffect(() => {
     const type = () => {
@@ -70,7 +80,7 @@ export default function Home() {
           // User is signed in
           <div className="flex justify-center gap-4">
             <button 
-              onClick={() => window.location.href = '/dashboard'}
+              onClick={handleNewExtraction}
               className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-lg font-semibold transition-colors duration-200 transform hover:scale-105"
             >
               Go to Dashboard

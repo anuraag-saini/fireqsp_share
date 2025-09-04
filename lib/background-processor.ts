@@ -13,6 +13,57 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// ONLY change this function in your current background-processor.ts file:
+async function updateExtractionTitleAndDisease(
+  extractionId: string,
+  interactions: any[],
+  allPages: any[] = []
+): Promise<{ diseaseType: string, title: string }> {
+  let diseaseType = 'General'
+  let title = diseaseType  // Changed: title = diseaseType always
+  
+  console.log('🔍 Updating title and disease type...')
+  
+  try {
+    if (interactions.length > 0) {
+      // Create sample pages from interactions for disease detection
+      const samplePages = interactions.slice(0, 5).map((int: any, index: number) => ({
+        page_content: int.reference_text || int.details || int.mechanism,
+        metadata: { page: index + 1, file_name: int.filename || 'unknown' }
+      }))
+      
+      const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(samplePages)
+      diseaseType = detectedType || 'General'
+      title = diseaseType  // Changed: title = diseaseType always
+      
+    } else if (allPages.length > 0) {
+      // Fallback: use actual pages if no interactions
+      const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(allPages.slice(0, 3))
+      diseaseType = detectedType || 'General'
+      title = diseaseType  // Changed: title = diseaseType always
+    }
+    
+  } catch (error) {
+    console.error('Disease type detection failed:', error)
+    diseaseType = 'General'
+    title = diseaseType  // Changed: title = diseaseType always
+  }
+  
+  // Update the extraction record
+  await supabase
+    .from('extractions')
+    .update({
+      title: title,
+      disease_type: diseaseType,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', extractionId)
+  
+  console.log(`✅ Updated extraction ${extractionId}: title="${title}", diseaseType="${diseaseType}"`)
+  
+  return { diseaseType, title }
+}
+
 export class BackgroundProcessor {
   static async processExtractionJob(
     jobId: string,
@@ -77,8 +128,10 @@ export class BackgroundProcessor {
       const allInteractions: any[] = []
       const allReferences: Record<string, string> = {}
       const allErrors: string[] = []
+      const allPages: any[] = [] // Keep track of all pages for disease detection
       let filesSuccessful = 0
       let filesProcessed = 0
+      let filesFailed = 0
 
       // Process files in batches
       for (let startIndex = 0; startIndex < fileList.length; startIndex += BATCH_SIZE) {
@@ -126,6 +179,7 @@ export class BackgroundProcessor {
             }))
             
             batchPages.push(...pagesWithFilename)
+            allPages.push(...pagesWithFilename) // Keep for disease detection
             console.log(`✅ Successfully processed ${fileName}: ${pages.length} pages`)
             
             // Delete file after successful processing
@@ -136,6 +190,7 @@ export class BackgroundProcessor {
             const errorMessage = `Failed to process ${fileName}: ${error instanceof Error ? error.message : error}`
             console.error(errorMessage)
             allErrors.push(errorMessage)
+            filesFailed++
             
             // Delete failed file too
             const filePath = `${userId}/${jobId}/${fileName}`
@@ -150,13 +205,13 @@ export class BackgroundProcessor {
           console.log(`🧠 Processing ${batchPages.length} pages with AI for batch ${startIndex + 1}-${endIndex}`)
           
           try {
-            // Extract interactions using existing logic
+            // Extract interactions using existing logic with timeout handling
             const { interactions, errors: interactionErrors } = await extractInteractionsFromPages(
               batchPages,
-              'General'
+              'General' // We'll detect disease type later from all interactions
             )
             
-            // Extract references using existing logic
+            // Extract references using existing logic with timeout handling
             const { references, errors: referenceErrors } = await extractReferencesFromPages(batchPages)
             
             // Accumulate results
@@ -185,6 +240,9 @@ export class BackgroundProcessor {
               })
               .eq('id', extraction.id)
               
+            // Update title and disease type after each successful batch
+            await updateExtractionTitleAndDisease(extraction.id, allInteractions, allPages)
+              
           } catch (aiError) {
             console.error(`AI processing failed for batch ${startIndex + 1}-${endIndex}:`, aiError)
             allErrors.push(`AI processing failed for batch ${startIndex + 1}-${endIndex}: ${aiError}`)
@@ -200,33 +258,32 @@ export class BackgroundProcessor {
       
       console.log(`🎯 All ${fileList.length} files processed, finalizing`)
       
-      // Final disease type detection and cleanup
-      let diseaseType = 'General'
-      let title = 'Extraction Complete'
+      // Determine final status based on success/failure ratio
+      let finalStatus: 'completed' | 'partial' | 'failed' = 'failed'
       
-      if (allInteractions.length > 0) {
-        try {
-          // Create pages from interactions for disease type detection
-          const samplePages = allInteractions.slice(0, 5).map((int: any, index: number) => ({
-            page_content: int.reference_text || int.details || int.mechanism,
-            metadata: { page: index + 1, file_name: int.filename }
-          }))
-          
-          const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(samplePages)
-          diseaseType = detectedType || 'General'
-          title = diseaseType && diseaseType !== 'General' ? diseaseType : 'Untitled'
-        } catch (diseaseError) {
-          console.error('Disease type detection failed:', diseaseError)
-        }
+      if (filesSuccessful === fileList.length) {
+        finalStatus = 'completed'
+        console.log('✅ All files processed successfully - status: completed')
+      } else if (filesSuccessful > 0) {
+        finalStatus = 'partial'
+        console.log(`⚠️ ${filesSuccessful}/${fileList.length} files processed successfully - status: partial`)
+      } else {
+        finalStatus = 'failed'
+        console.log('❌ No files processed successfully - status: failed')
       }
       
-      // Final extraction update using direct supabase call
+      // Final extraction update - ensure title and disease type are set
+      const { diseaseType, title } = await updateExtractionTitleAndDisease(
+        extraction.id, 
+        allInteractions, 
+        allPages
+      )
+      
+      // Update final status
       await supabase
         .from('extractions')
         .update({
-          title: title,
-          disease_type: diseaseType,
-          status: 'completed',
+          status: finalStatus,
           interaction_count: allInteractions.length,
           updated_at: new Date().toISOString()
         })
@@ -234,19 +291,23 @@ export class BackgroundProcessor {
       
       // Complete the job
       await JobManager.updateJobProgress(jobId, {
-        status: 'completed',
+        status: finalStatus,
         interactions_found: allInteractions.length,
+        files_successful: filesSuccessful,
+        files_failed: filesFailed,
         current_file: undefined
       })
       
-      // Track usage
-      try {
-        await incrementUserExtraction(userId)
-      } catch (error) {
-        console.error('Failed to track usage:', error)
+      // Track usage only if we got some results
+      if (finalStatus !== 'failed') {
+        try {
+          await incrementUserExtraction(userId)
+        } catch (error) {
+          console.error('Failed to track usage:', error)
+        }
       }
       
-      console.log(`✅ Background processing completed successfully: ${allInteractions.length} interactions found`)
+      console.log(`✅ Background processing completed: status=${finalStatus}, interactions=${allInteractions.length}, title="${title}"`)
       
       return { success: true }
       
@@ -262,6 +323,9 @@ export class BackgroundProcessor {
       // Update extraction status if we have one using direct supabase call
       if (extraction?.id) {
         try {
+          // Even if processing failed, try to update title if we have any data
+          await updateExtractionTitleAndDisease(extraction.id, [], [])
+          
           await supabase
             .from('extractions')
             .update({
