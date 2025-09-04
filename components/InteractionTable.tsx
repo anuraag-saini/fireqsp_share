@@ -22,6 +22,8 @@ interface Interaction {
   details: string
   confidence: string
   filename: string
+  page_number: string
+  reference_text: string
   selected?: boolean
 }
 
@@ -116,34 +118,49 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
       size: 30
     }),
 
+    // Updated header names for user-friendly display
     columnHelper.accessor('source', {
-      header: 'Source',
+      header: 'Source Biological Entity',
       cell: info => {
         const source = info.getValue()
         return (
-          <span className="font-medium text-blue-600 text-sm">
-            {source.name}
-          </span>
+          <div>
+            <span className="font-medium text-blue-600 text-sm block">
+              {source.name}
+            </span>
+            {/* Hide level from user view - commenting out 
+            <span className="text-xs text-gray-500">
+              {source.level}
+            </span>
+            */}
+          </div>
         )
       },
-      size: 80
+      size: 120
     }),
 
     columnHelper.accessor('target', {
-      header: 'Target', 
+      header: 'Target Biological Entity', 
       cell: info => {
         const target = info.getValue()
         return (
-          <span className="font-medium text-green-600 text-sm">
-            {target.name}
-          </span>
+          <div>
+            <span className="font-medium text-green-600 text-sm block">
+              {target.name}
+            </span>
+            {/* Hide level from user view - commenting out 
+            <span className="text-xs text-gray-500">
+              {target.level}
+            </span>
+            */}
+          </div>
         )
       },
-      size: 80
+      size: 120
     }),
 
     columnHelper.accessor('interaction_type', {
-      header: 'Type',
+      header: 'Interaction Type',
       cell: info => {
         const type = info.getValue()
         const colorMap = {
@@ -160,59 +177,56 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
           </span>
         )
       },
-      size: 100
-    }),
-
-    columnHelper.display({
-      id: 'source_level',
-      header: 'Source Level',
-      cell: ({ row }) => {
-        const level = row.original.source.level
-        const colorMap = {
-          'Molecular': 'text-green-600',
-          'Cellular': 'text-blue-600', 
-          'Organ': 'text-red-600',
-          'Clinical': 'text-yellow-600'
-        }
-        return (
-          <span className={`text-xs font-medium ${colorMap[level as keyof typeof colorMap] || 'text-gray-500'}`}>
-            {level}
-          </span>
-        )
-      },
-      size: 80
-    }),
-
-    columnHelper.display({
-      id: 'target_level', 
-      header: 'Target Level',
-      cell: ({ row }) => {
-        const level = row.original.target.level
-        const colorMap = {
-          'Molecular': 'text-green-600',
-          'Cellular': 'text-blue-600',
-          'Organ': 'text-red-600', 
-          'Clinical': 'text-yellow-600'
-        }
-        return (
-          <span className={`text-xs font-medium ${colorMap[level as keyof typeof colorMap] || 'text-gray-500'}`}>
-            {level}
-          </span>
-        )
-      },
-      size: 80
+      size: 110
     }),
 
     columnHelper.accessor('mechanism', {
-      header: 'Mechanism',
+      header: 'Mechanism Description',
       cell: info => (
         <div className="max-w-xs">
-          <p className="text-sm text-gray-900 truncate" title={info.getValue()}>
+          <p className="text-sm text-gray-900 line-clamp-2" title={info.getValue()}>
             {info.getValue()}
           </p>
         </div>
       ),
       size: 200
+    }),
+
+    // NEW: Page Number column
+    columnHelper.accessor('page_number', {
+      header: 'Page #',
+      cell: info => {
+        const pageNum = info.getValue()
+        return pageNum && pageNum !== '' ? (
+          <span className="text-xs text-gray-600 font-mono bg-gray-100 px-2 py-1 rounded">
+            {pageNum}
+          </span>
+        ) : (
+          <span className="text-xs text-gray-400">-</span>
+        )
+      },
+      size: 60
+    }),
+
+    // NEW: Reference Text column (truncated with tooltip)
+    columnHelper.accessor('reference_text', {
+      header: 'Reference Text',
+      cell: info => {
+        const refText = info.getValue()
+        if (!refText || refText.trim() === '') {
+          return <span className="text-xs text-gray-400">No reference text</span>
+        }
+        
+        const truncated = refText.length > 100 ? refText.substring(0, 100) + '...' : refText
+        return (
+          <div className="max-w-sm">
+            <p className="text-xs text-gray-700 leading-tight" title={refText}>
+              {truncated}
+            </p>
+          </div>
+        )
+      },
+      size: 180
     }),
 
     columnHelper.accessor('filename', {
@@ -257,7 +271,16 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
       return
     }
 
-    const headers = ['Source', 'Target', 'Type', 'Mechanism', 'Source Level', 'Target Level', 'Source File']
+    const headers = [
+      'Source Biological Entity',
+      'Target Biological Entity', 
+      'Interaction Type',
+      'Mechanism Description',
+      'Page Number',
+      'Reference Text',
+      'Source File'
+    ]
+    
     const csvData = [
       headers.join(','),
       ...selectedInteractions.map(row => [
@@ -265,8 +288,8 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
         `"${row.target.name}"`,
         `"${row.interaction_type}"`,
         `"${row.mechanism}"`,
-        `"${row.source.level}"`,
-        `"${row.target.level}"`,
+        `"${row.page_number || 'N/A'}"`,
+        `"${(row.reference_text || 'No reference text').replace(/"/g, '""')}"`, // Escape quotes
         `"${row.filename}"`
       ].join(','))
     ].join('\n')
@@ -331,7 +354,7 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
             <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search interactions..."
+              placeholder="Search biological entities, mechanisms, or reference text..."
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -355,7 +378,7 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
               onChange={(e) => setTypeFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">All Types</option>
+              <option value="">All Interaction Types</option>
               <option value="upregulation">Upregulation</option>
               <option value="activation">Activation</option>
               <option value="inhibition">Inhibition</option>
@@ -413,7 +436,7 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
                 {row.getVisibleCells().map(cell => (
                   <td
                     key={cell.id}
-                    className="px-4 py-3 whitespace-nowrap"
+                    className="px-4 py-3 text-sm"
                     style={{ width: cell.column.getSize() }}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}

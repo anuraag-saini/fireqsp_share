@@ -11,6 +11,8 @@ interface Interaction {
   details: string
   confidence: string
   filename: string
+  page_number: string
+  reference_text: string
   selected?: boolean
 }
 
@@ -62,6 +64,8 @@ export const useAppStore = create<AppState>()(
           details: item.details || '',
           confidence: item.confidence || 'medium',
           filename: item.filename || '',
+          page_number: item.page_number || '',
+          reference_text: item.reference_text || '',
           selected: false
         }))
         

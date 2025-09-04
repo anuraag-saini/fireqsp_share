@@ -13,6 +13,8 @@ interface Interaction {
   details: string
   confidence: string
   filename: string
+  page_number: string
+  reference_text: string
 }
 
 interface DiagramViewerProps {
@@ -27,7 +29,7 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
   const [error, setError] = useState<string | null>(null)
   const [showLabels, setShowLabels] = useState(true)
 
-  // Replace the getUserLimits import and usage with this:
+  // Get user limits
   useEffect(() => {
     const checkLimits = async () => {
       try {
@@ -44,16 +46,27 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
     checkLimits()
   }, [user?.id])
 
-  // In your diagram rendering, add this simple limit:
+  // Apply user plan limits AND diagram complexity limits
   const limitedInteractions = useMemo(() => {
-    if (!userLimits) return interactions
+    let result = interactions
     
-    // Simple limits
-    if (userLimits.plan === 'basic') return interactions.slice(0, 50)
-    if (userLimits.plan === 'expired') return interactions.slice(0, 10)
+    // Apply user plan limits first
+    if (userLimits?.plan === 'basic') {
+      result = interactions.slice(0, 50)
+    } else if (userLimits?.plan === 'expired') {
+      result = interactions.slice(0, 10)
+    }
     
-    return interactions // Trial and Pro get unlimited
+    // Apply diagram complexity limit for all users
+    if (result.length > 300) {
+      result = result.slice(0, 300)
+    }
+    
+    return result
   }, [interactions, userLimits])
+
+  // Check if we need to show complexity warning
+  const showComplexityWarning = interactions.length > 300 && (!userLimits?.plan || (userLimits.plan !== 'basic' && userLimits.plan !== 'expired'))
 
   // Generate Mermaid code from interactions
   const generateMermaidCode = (interactions: Interaction[], showLabels: boolean): string => {
@@ -105,7 +118,6 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
         nodes.set(targetId, { name: targetName, level: targetLevel })
 
         // Determine arrow type and label based on interaction type
-        // Determine arrow type and label based on interaction type
         const interactionType = interaction.interaction_type?.toLowerCase() || 'default'
         let arrow = '-->'
         let arrowColor = interactionColors.default
@@ -133,7 +145,6 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
               break
             }
           }
-          // Default arrow with no label
           arrow = '-->'
         }
 
@@ -305,11 +316,10 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
         <div>
           <h2 className="text-xl font-semibold mb-1">🎨 Interaction Network Diagram</h2>
           <p className="text-gray-600 text-sm">
-            {/* Visualizing {interactions.length} biological interactions */}
             Visualizing {limitedInteractions.length} biological interactions
-            {limitedInteractions.length !== interactions.length && (
+            {/* {limitedInteractions.length !== interactions.length && (
               <span className="text-yellow-600"> (limited by plan)</span>
-            )}
+            )} */}
           </p>
         </div>
         
@@ -347,6 +357,25 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
         </div>
       </div>
 
+      {/* Complexity Warning Banner */}
+      {showComplexityWarning && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-blue-800">
+                <span className="font-medium">Too many interactions for diagram ({interactions.length} selected).</span>
+                {' '}Showing first 300 to prevent rendering issues.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Diagram Container */}
       <div className="border border-gray-200 rounded-lg p-4 min-h-[400px] bg-white">
         {isLoading && (
@@ -372,7 +401,7 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
         />
       </div>
 
-      {/* Add this right after the diagram container div */}
+      {/* User plan limit warnings */}
       {userLimits?.plan === 'basic' && interactions.length > 50 && (
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
           <p className="text-sm text-yellow-800">

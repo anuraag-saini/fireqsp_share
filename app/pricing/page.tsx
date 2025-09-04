@@ -11,7 +11,7 @@ const plans = [
     description: 'Perfect for getting started with QSP modeling',
     features: [
       'Up to 5 extractions per month',
-      'Maximum 5 PDFs upload per extractions',
+      'Maximum 5 PDFs upload per extraction',
       'Fixed 50 interactions for diagram',
       'Full table export',
       'Email support'
@@ -33,22 +33,7 @@ const plans = [
     ],
     priceId: 'pro',
     popular: true
-  },
-  // {
-  //   title: 'Enterprise',
-  //   monthlyPrice: 299,
-  //   description: 'Full-featured platform for teams',
-  //   features: [
-  //     'Everything in Pro',
-  //     'Team collaboration',
-  //     'Custom integrations',
-  //     'Dedicated support',
-  //     'SLA guarantee',
-  //     'Custom training'
-  //   ],
-  //   priceId: 'enterprise',
-  //   popular: false
-  // }
+  }
 ]
 
 function PricingCard({ plan, isYearly, index }: { 
@@ -61,7 +46,6 @@ function PricingCard({ plan, isYearly, index }: {
   const monthlyPrice = plan.monthlyPrice
   const yearlyMonthlyPrice = Math.round(monthlyPrice * 0.8) // 20% discount
   const displayPrice = isYearly ? yearlyMonthlyPrice : monthlyPrice
-  const yearlyTotal = yearlyMonthlyPrice * 12
   const monthlySavings = monthlyPrice - yearlyMonthlyPrice
 
   const handleSubscribe = async () => {
@@ -138,8 +122,7 @@ function PricingCard({ plan, isYearly, index }: {
                 💰 Save ${monthlySavings}/month (${monthlySavings * 12}/year)
               </div>
               <div className="text-xs text-gray-500">
-                Billed annually 
-                {/* at ${yearlyTotal} */}
+                Billed annually
               </div>
             </div>
           )}
@@ -190,7 +173,7 @@ export default function PricingPage() {
             Choose Your Plan
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-            Select the perfect plan for your QSP modeling needs. Start with a free trial and upgrade anytime.
+            Select the perfect plan for your QSP modeling needs. Start your research with confidence.
           </p>
         </div>
         
@@ -226,7 +209,7 @@ export default function PricingPage() {
         </div>
         
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-2 gap-8 max-w-7xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
           {plans.map((plan, index) => (
             <PricingCard 
               key={`${plan.title}-${isYearly}`} 
@@ -237,12 +220,11 @@ export default function PricingPage() {
           ))}
         </div>
         
-        {/* Footer */}
-        <div className="text-center mt-16 opacity-0 animate-fadeInUp" style={{ animationDelay: '800ms', animationFillMode: 'forwards' }}>
-          <div className="bg-white rounded-xl p-8 shadow-lg max-w-2xl mx-auto">
-            <h3 className="text-xl font-semibold mb-4">🎯 Risk-Free Trial</h3>
-            <p className="text-gray-600 mb-4">
-              All plans include a <strong>14-day free trial</strong>. No credit card required to start.
+        {/* Simple Footer with Risk-Free Message */}
+        <div className="text-center mt-16 opacity-0 animate-fadeInUp" style={{ animationDelay: '600ms', animationFillMode: 'forwards' }}>
+          <div className="bg-white rounded-xl p-6 shadow-lg max-w-2xl mx-auto">
+            <p className="text-gray-600 mb-3">
+              Already signed up? You're automatically on our <strong>risk-free trial</strong>.
             </p>
             <div className="flex justify-center space-x-8 text-sm text-gray-500">
               <span>✅ Cancel anytime</span>
