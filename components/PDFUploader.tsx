@@ -94,6 +94,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
   const removeFile = (id: string) => {
     setFiles(prev => prev.filter(f => f.id !== id))
   }
+  
 
   // Check if upload qualifies for background processing
   const isLargeUpload = () => {
