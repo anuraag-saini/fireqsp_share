@@ -7,7 +7,84 @@ type Extraction = Database['public']['Tables']['extractions']['Row']
 type ExtractionInsert = Database['public']['Tables']['extractions']['Insert']
 
 export class SupabaseExtraction {
-  // Centralized function to update disease type and title - SINGLE SOURCE OF TRUTH
+  // Save interactions to separate table for better performance
+  static async saveInteractions(extractionId: string, interactions: Interaction[]): Promise<void> {
+    if (interactions.length === 0) return
+    
+    // Convert interactions to database format
+    const interactionRows = interactions.map(interaction => ({
+      extraction_id: extractionId,
+      mechanism: interaction.mechanism,
+      source_name: interaction.source.name,
+      source_level: interaction.source.level,
+      target_name: interaction.target.name,
+      target_level: interaction.target.level,
+      interaction_type: interaction.interaction_type,
+      details: interaction.details,
+      confidence: interaction.confidence || 'medium',
+      reference_text: interaction.reference_text || '',
+      page_number: interaction.page_number || '',
+      filename: interaction.filename || ''
+    }))
+    
+    const { error } = await supabaseAdmin
+      .from('interactions')
+      .insert(interactionRows)
+    
+    if (error) {
+      console.error('Error saving interactions:', error)
+      throw error
+    }
+    
+    console.log(`✅ Saved ${interactions.length} interactions to separate table`)
+  }
+  
+  // Get interactions for an extraction from separate table
+  static async getInteractions(extractionId: string): Promise<Interaction[]> {
+    const { data, error } = await supabaseAdmin
+      .from('interactions')
+      .select('*')
+      .eq('extraction_id', extractionId)
+      .order('created_at', { ascending: true })
+    
+    if (error) {
+      console.error('Error fetching interactions:', error)
+      throw error
+    }
+    
+    // Convert back to Interaction format
+    return (data || []).map(row => ({
+      id: row.id,
+      mechanism: row.mechanism,
+      source: {
+        name: row.source_name,
+        level: row.source_level
+      },
+      target: {
+        name: row.target_name,
+        level: row.target_level
+      },
+      interaction_type: row.interaction_type as any,
+      details: row.details,
+      confidence: row.confidence as any,
+      reference_text: row.reference_text,
+      page_number: row.page_number,
+      filename: row.filename
+    }))
+  }
+
+  // Get extraction with interactions from separate table
+  static async getExtractionWithInteractions(extractionId: string): Promise<{ extraction: Extraction | null, interactions: Interaction[] }> {
+    const extraction = await this.getExtraction(extractionId)
+    if (!extraction) {
+      return { extraction: null, interactions: [] }
+    }
+    
+    const interactions = await this.getInteractions(extractionId)
+    return { extraction, interactions }
+  }
+
+  // Centralized function to update disease type and title
   static async updateExtractionTitleAndDisease(
     extractionId: string,
     interactions: any[] = [],
@@ -27,7 +104,6 @@ export class SupabaseExtraction {
         }))
         
         const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(samplePages)
-        // Use the detected disease type as both diseaseType and title
         diseaseType = detectedType || 'General'
         title = diseaseType
         
@@ -71,7 +147,7 @@ export class SupabaseExtraction {
     return extraction
   }
 
-  // Update extraction - now much simpler!
+  // Update extraction
   static async updateExtraction(id: string, updates: Partial<ExtractionInsert>): Promise<void> {
     const { error } = await supabaseAdmin
       .from('extractions')
@@ -81,21 +157,23 @@ export class SupabaseExtraction {
     if (error) throw error
   }
 
-  // Save complete extraction results - now supports 'partial' status
-  static async saveExtractionResults(
+  // NEW: Save extraction results using separate table (recommended)
+  static async saveExtractionResultsNew(
     extractionId: string, 
     interactions: Interaction[], 
     references: Record<string, string>,
     errors: string[],
-    status: 'completed' | 'partial' | 'failed' | 'processing' = 'completed'  // Added 'partial'
+    status: 'completed' | 'partial' | 'failed' | 'processing' = 'completed'
   ): Promise<void> {
-    // First save the data
+    // Save interactions to separate table
+    await this.saveInteractions(extractionId, interactions)
+    
+    // Update extraction summary (no interactions JSON)
     const { error } = await supabaseAdmin
       .from('extractions')
       .update({
         status: status,
         interaction_count: interactions.length,
-        interactions: interactions,
         source_references: references,
         errors: errors,
         updated_at: new Date().toISOString()
@@ -103,39 +181,77 @@ export class SupabaseExtraction {
       .eq('id', extractionId)
     
     if (error) throw error
+    console.log(`✅ Saved extraction results: ${interactions.length} interactions, status: ${status}`)
+  }
 
-    // Then update disease type and title based on the results
+  // LEGACY: Keep old method for backward compatibility (no interactions column)
+  static async saveExtractionResults(
+    extractionId: string, 
+    interactions: Interaction[], 
+    references: Record<string, string>,
+    errors: string[],
+    status: 'completed' | 'partial' | 'failed' | 'processing' = 'completed'
+  ): Promise<void> {
+    // Save interactions to separate table
+    await this.saveInteractions(extractionId, interactions)
+    
+    // Update extraction summary (no interactions JSON)
+    const { error } = await supabaseAdmin
+      .from('extractions')
+      .update({
+        status: status,
+        interaction_count: interactions.length,
+        source_references: references,
+        errors: errors,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', extractionId)
+    
+    if (error) throw error
     await this.updateExtractionTitleAndDisease(extractionId, interactions)
   }
 
-  // New helper method to complete extraction with proper disease type - supports 'partial'
+  // NEW: Complete extraction with separate table
+  static async completeExtractionNew(
+    extractionId: string,
+    interactions: Interaction[],
+    references: Record<string, string>,
+    errors: string[],
+    allPages: any[] = [],
+    status: 'completed' | 'partial' = 'completed'
+  ): Promise<{ diseaseType: string, title: string }> {
+    await this.saveExtractionResultsNew(extractionId, interactions, references, errors, status)
+    return await this.updateExtractionTitleAndDisease(extractionId, interactions, allPages)
+  }
+
+  // LEGACY: Keep old method for backward compatibility (no interactions column)
   static async completeExtraction(
     extractionId: string,
     interactions: Interaction[],
     references: Record<string, string>,
     errors: string[],
     allPages: any[] = [],
-    status: 'completed' | 'partial' = 'completed'  // Added 'partial'
+    status: 'completed' | 'partial' = 'completed'
   ): Promise<{ diseaseType: string, title: string }> {
+    // Save interactions to separate table
+    await this.saveInteractions(extractionId, interactions)
     
-    // Save results first
+    // Update extraction summary (no interactions JSON)
     await supabaseAdmin
       .from('extractions')
       .update({
         status: status,
         interaction_count: interactions.length,
-        interactions: interactions,
         source_references: references,
         errors: errors,
         updated_at: new Date().toISOString()
       })
       .eq('id', extractionId)
 
-    // Then update disease type and title
     return await this.updateExtractionTitleAndDisease(extractionId, interactions, allPages)
   }
 
-  // Get extraction with all data - no transformation needed!
+  // Get extraction data
   static async getExtraction(extractionId: string): Promise<Extraction | null> {
     const { data, error } = await supabaseAdmin
       .from('extractions')
@@ -147,24 +263,27 @@ export class SupabaseExtraction {
       console.error('Error fetching extraction:', error)
       return null
     }
-
     return data
   }
 
-  // Get user's extraction history for sidebar
-  static async getUserExtractions(userId: string): Promise<Extraction[]> {
+  // Get user's extraction history - OPTIMIZED for performance
+  static async getUserExtractions(userId: string): Promise<Partial<Extraction>[]> {
     const { data, error } = await supabaseAdmin
       .from('extractions')
-      .select('*')
+      .select('id, title, status, file_count, interaction_count, created_at, updated_at, disease_type')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
 
-    if (error) throw error
+    if (error) {
+      console.error('Error fetching user extractions:', error)
+      throw error
+    }
     return data || []
   }
 
-  // Delete extraction
+  // Delete extraction and its interactions
   static async deleteExtraction(id: string): Promise<void> {
+    // Interactions will be deleted automatically due to foreign key CASCADE
     const { error } = await supabaseAdmin
       .from('extractions')
       .delete()
@@ -173,7 +292,7 @@ export class SupabaseExtraction {
     if (error) throw error
   }
 
-  // Simple in-memory cache (replaces complex database cache)
+  // Simple in-memory cache
   private static cache = new Map<string, { data: any; expires: number }>()
 
   static getCachedResult(cacheKey: string): any | null {
@@ -184,7 +303,7 @@ export class SupabaseExtraction {
     }
     
     if (cached) {
-      this.cache.delete(cacheKey) // Remove expired cache
+      this.cache.delete(cacheKey)
     }
     
     return null

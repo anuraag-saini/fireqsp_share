@@ -23,6 +23,62 @@ export default function Dashboard() {
     clearAll 
   } = useAppStore()
 
+  // Simple handler for loading extractions from URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const loadExtractionId = urlParams.get('loadExtraction')
+    
+    console.log('Dashboard: checking for loadExtraction param:', loadExtractionId)
+    console.log('User ID:', user?.id)
+    
+    if (loadExtractionId && user?.id) {
+      console.log('Loading extraction:', loadExtractionId)
+      const loadAndShowExtraction = async () => {
+        try {
+          const response = await fetch(`/api/extractions/${loadExtractionId}`)
+          console.log('API response status:', response.status)
+          
+          if (response.ok) {
+            const data = await response.json()
+            const extraction = data.extraction
+            
+            console.log('Extraction loaded:', {
+              id: extraction.id,
+              interactionCount: extraction.interactions?.length,
+              title: extraction.title
+            })
+            
+            if (extraction.interactions && extraction.interactions.length > 0) {
+              console.log('Setting extraction results and switching to select step')
+              setExtractionResults({
+                interactions: extraction.interactions,
+                references: extraction.source_references || {}
+              })
+              setCurrentStep('select')
+              console.log('Done - should now show Select Interactions table')
+            } else {
+              console.log('No interactions found in extraction')
+            }
+          } else {
+            console.log('Failed to load extraction, status:', response.status)
+          }
+        } catch (error) {
+          console.error('Error loading extraction:', error)
+        }
+        
+        // Clean up URL
+        window.history.replaceState({}, '', '/dashboard')
+      }
+      
+      loadAndShowExtraction()
+    } else {
+      console.log('Conditions not met:', {
+        hasLoadParam: !!loadExtractionId,
+        hasUser: !!user?.id
+      })
+    }
+  }, [user?.id, setExtractionResults, setCurrentStep])
+
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
       router.push('/sign-in')
@@ -101,6 +157,13 @@ export default function Dashboard() {
       interactions: results.interactions || [],
       references: results.references || {}
     })
+    
+    // Automatically go to select step if we have interactions
+    if (results.interactions && results.interactions.length > 0) {
+      setTimeout(() => {
+        setCurrentStep('select')
+      }, 100)
+    }
   }
 
   const handleBackToTable = () => {

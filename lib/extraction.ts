@@ -1,9 +1,9 @@
 import OpenAI from 'openai'
 import { getPromptForDiseaseType, EXTRACTION_CONFIG, type DocumentPage, type Interaction } from './prompts'
+import { openAIKeyManager } from './openai-manager'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
+// OpenAI clients will be created with rotating keys in each function
+
 
 export interface ExtractionProgress {
   fileIndex: number
@@ -295,28 +295,37 @@ export async function extractDiseaseTypeFromPages(
   // Use first few pages from first file to identify disease type
   const firstFilePages = documentPages
     .filter(page => page.metadata.file_name === documentPages[0]?.metadata.file_name)
-    .slice(0, 3) // First 3 pages should be enough
+    .slice(0, 3) // First page should be enough
   
   if (firstFilePages.length === 0) {
+    console.log('❌ No pages available for disease type extraction')
     return { diseaseType: 'General', errors: ['No pages available for disease type extraction'] }
   }
   
   const combinedText = firstFilePages.map(doc => doc.page_content).join('\n\n')
   const pageNumbers = firstFilePages.map(doc => doc.metadata.page).join(',')
   
+  console.log('📝 Disease detection input:')
+  console.log(`Pages: ${pageNumbers}, Text length: ${combinedText.length}`)
+  // console.log('Sample text:', combinedText.substring(0, 300) + (combinedText.length > 300 ? '...' : ''))
+  
   try {
     // Add timeout for disease type detection
+    console.log('🚀 Starting OpenAI disease detection call...')
     const diseaseType = await withTimeout(
       callOpenAIForDiseaseType(combinedText, pageNumbers),
-      3 * 60 * 1000, // 3 minutes for disease type (shortest)
+      60 * 1000, // 60 seconds
       'Disease type detection'
     )
     
-    if (diseaseType && diseaseType.trim() && !['', 'none', 'not found', 'unknown'].includes(diseaseType.toLowerCase())) {
-      console.log(`✅ Disease type detected: ${diseaseType}`)
-      return { diseaseType: diseaseType.trim(), errors: [] }
+    console.log(`🎯 Raw OpenAI response: "${diseaseType}"`)
+    
+    if (diseaseType && diseaseType.trim() && !['', 'none', 'not found', 'unknown', 'general'].includes(diseaseType.toLowerCase().trim())) {
+      const cleanedType = diseaseType.trim()
+      console.log(`✅ Disease type detected: "${cleanedType}"`)
+      return { diseaseType: cleanedType, errors: [] }
     } else {
-      console.log(`ℹ️ No specific disease type detected, using 'General'`)
+      console.log(`ℹ️ No specific disease type detected (got: "${diseaseType}"), using 'General'`)
       return { diseaseType: 'General', errors: [] }
     }
   } catch (error) {
@@ -326,7 +335,7 @@ export async function extractDiseaseTypeFromPages(
     diseaseErrors.push(`Failed to extract disease type: ${errorMsg}`)
     
     if (isTimeout) {
-      console.log(`⏰ Disease type detection timed out after 3 minutes, using 'General'`)
+      console.log(`⏰ Disease type detection timed out after 60 seconds, using 'General'`)
     } else {
       console.log(`❌ Disease type detection failed: ${errorMsg}, using 'General'`)
     }
@@ -338,8 +347,17 @@ export async function extractDiseaseTypeFromPages(
 async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
   const { DISEASE_TYPE_PROMPT } = await import('./prompts')
   
-  // Get dynamic model
-  const model = await getOpenAIModel()
+  // Get dynamic model and rotating API key
+  const { model, apiKey } = await getOpenAIModel()
+  
+  // Create OpenAI client with specific key
+  const openai = new OpenAI({ apiKey })
+  
+  console.log('🎨 Disease Detection OpenAI Call:')
+  console.log('Model:', model)
+  console.log('API Key:', apiKey.slice(0, 10) + '...')
+  console.log('Text length:', text.length)
+  console.log('First 200 chars:', text.substring(0, 200) + '...')
   
   const response = await openai.chat.completions.create({
     model,
@@ -357,14 +375,20 @@ async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
     max_tokens: 50    // Short response needed
   })
   
-  return response.choices[0]?.message?.content?.trim() || 'General'
+  const result = response.choices[0]?.message?.content?.trim() || 'General'
+  console.log('📝 OpenAI raw result for disease detection:', `"${result}"`)
+  
+  return result
 }
 
 async function callOpenAIForExtraction(text: string, pageNumbers: string, diseaseType: string) {
   const promptTemplate = getPromptForDiseaseType(diseaseType)
   
-  // Get dynamic model
-  const model = await getOpenAIModel()
+  // Get dynamic model and rotating API key
+  const { model, apiKey } = await getOpenAIModel()
+  
+  // Create OpenAI client with specific key
+  const openai = new OpenAI({ apiKey })
   
   console.log('=== OpenAI Extraction Debug ===')
   console.log('Disease type:', diseaseType)
@@ -411,8 +435,11 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
 async function callOpenAIForReferences(text: string, pageNumbers: string) {
   const { REFERENCE_PROMPT } = await import('./prompts')
   
-  // Get dynamic model
-  const model = await getOpenAIModel()
+  // Get dynamic model and rotating API key
+  const { model, apiKey } = await getOpenAIModel()
+  
+  // Create OpenAI client with specific key
+  const openai = new OpenAI({ apiKey })
   
   const response = await openai.chat.completions.create({
     model,
@@ -432,8 +459,8 @@ async function callOpenAIForReferences(text: string, pageNumbers: string) {
   return response.choices[0]?.message?.content?.trim() || ''
 }
 
-// Helper function to get OpenAI model from settings
-async function getOpenAIModel(): Promise<string> {
+// Helper function to get OpenAI model and rotating API key
+async function getOpenAIModel(): Promise<{ model: string, apiKey: string }> {
   try {
     const { createClient } = await import('@supabase/supabase-js')
     const supabase = createClient(
@@ -447,11 +474,13 @@ async function getOpenAIModel(): Promise<string> {
       .single()
     
     const model = data?.openai_model || 'gpt-4o-mini'
+    const apiKey = openAIKeyManager.getNextKey() // Get rotated key
+    
     console.log(`🤖 Using OpenAI model: ${model}`)
-    return model
+    return { model, apiKey }
   } catch (error) {
     console.log('⚠️ Using default model due to error:', error)
-    return 'gpt-4o-mini'
+    return { model: 'gpt-4o-mini', apiKey: openAIKeyManager.getNextKey() }
   }
 }
 

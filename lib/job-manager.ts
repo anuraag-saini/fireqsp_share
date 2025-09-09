@@ -72,6 +72,7 @@ export class JobManager {
     interactions_found?: number
     failed_files?: string[]
     status?: string
+    extraction_id?: string
   }): Promise<void> {
     const updateData: any = { ...updates }
     
