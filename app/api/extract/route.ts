@@ -105,7 +105,6 @@ export async function POST(request: NextRequest) {
       status: 'processing',
       file_count: files.length,
       interaction_count: 0,
-      interactions: null,
       source_references: null,
       errors: null,
       job_id: null,
@@ -187,13 +186,17 @@ export async function POST(request: NextRequest) {
       .from('extractions')
       .update({
         status: 'completed',
-        interactions: interactionsWithFilename,
         source_references: references,
         errors: allErrors,
         interaction_count: interactionsWithFilename.length,
         updated_at: new Date().toISOString()
       })
       .eq('id', extraction.id)
+
+    // Save interactions to separate table for better performance
+    if (interactionsWithFilename.length > 0) {
+      await SupabaseExtraction.saveInteractions(extraction.id, interactionsWithFilename)
+    }
 
     // Now update disease type and title using centralized function
     const { diseaseType, title } = await updateExtractionTitleAndDisease(
