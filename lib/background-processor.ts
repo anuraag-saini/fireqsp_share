@@ -20,33 +20,60 @@ async function updateExtractionTitleAndDisease(
   allPages: any[] = []
 ): Promise<{ diseaseType: string, title: string }> {
   let diseaseType = 'General'
-  let title = diseaseType  // Changed: title = diseaseType always
+  let title = diseaseType
   
   console.log('🔍 Updating title and disease type...')
+  console.log(`Interactions available: ${interactions.length}, Pages available: ${allPages.length}`)
   
   try {
     if (interactions.length > 0) {
-      // Create sample pages from interactions for disease detection
-      const samplePages = interactions.slice(0, 5).map((int: any, index: number) => ({
-        page_content: int.reference_text || int.details || int.mechanism,
-        metadata: { page: index + 1, file_name: int.filename || 'unknown' }
-      }))
+      // Method 1: Combine all reference texts to get better context
+      const combinedReferences = interactions
+        .map(int => int.reference_text || '')
+        .filter(text => text.length > 20) // Only substantial reference texts
+        .slice(0, 3) // Take first 3 substantial references
+        .join('\n\n')
       
-      const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(samplePages)
-      diseaseType = detectedType || 'General'
-      title = diseaseType  // Changed: title = diseaseType always
+      console.log('📋 Combined reference text for disease detection:')
+      console.log(combinedReferences.substring(0, 500) + (combinedReferences.length > 500 ? '...' : ''))
+      console.log(`📏 Total length: ${combinedReferences.length} characters`)
+      
+      if (combinedReferences.length > 50) {
+        // Create a single "page" from combined reference texts
+        const referencePage = [{
+          page_content: combinedReferences,
+          metadata: { page: 1, file_name: interactions[0].filename || 'unknown' }
+        }]
+        
+        console.log('🤖 Calling OpenAI for disease detection...')
+        const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(referencePage)
+        console.log(`🎯 OpenAI returned disease type: "${detectedType}"`)
+        
+        diseaseType = detectedType || 'General'
+        title = diseaseType
+        
+        console.log(`✨ Final disease detected from interactions: "${diseaseType}"`)
+      } else {
+        console.log('⚠️ Combined reference text too short, skipping disease detection')
+      }
       
     } else if (allPages.length > 0) {
-      // Fallback: use actual pages if no interactions
-      const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(allPages.slice(0, 3))
+      // Fallback: use actual first page if no interactions
+      console.log('📋 Using first page for disease detection as fallback')
+      const firstPageContent = allPages[0]?.page_content?.substring(0, 200) + '...'
+      console.log('First page content sample:', firstPageContent)
+      
+      const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(allPages.slice(0, 1))
       diseaseType = detectedType || 'General'
-      title = diseaseType  // Changed: title = diseaseType always
+      title = diseaseType
+      
+      console.log(`✨ Disease detected from pages: "${diseaseType}"`)
     }
     
   } catch (error) {
-    console.error('Disease type detection failed:', error)
+    console.error('❌ Disease type detection failed:', error)
     diseaseType = 'General'
-    title = diseaseType  // Changed: title = diseaseType always
+    title = diseaseType
   }
   
   // Update the extraction record
@@ -102,14 +129,13 @@ export class BackgroundProcessor {
       
       console.log(`Found ${fileList.length} files to process`)
       
-      // Create extraction record
+      // Create extraction record (interactions go to separate table)
       extraction = await SupabaseExtraction.createExtraction({
         user_id: userId,
         title: 'Processing...',
         status: 'processing',
         file_count: fileList.length,
         interaction_count: 0,
-        interactions: null,
         source_references: null,
         errors: null,
         job_id: jobId,
@@ -119,6 +145,11 @@ export class BackgroundProcessor {
       // Link extraction to job using direct supabase call
       if (extraction?.id) {
         console.log(`✅ Created extraction record: ${extraction.id}`)
+        // Update job with extraction_id
+        await JobManager.updateJobProgress(jobId, {
+          extraction_id: extraction.id
+        })
+        console.log(`🔗 Linked job ${jobId} to extraction ${extraction.id}`)
       }
       
       // Process files individually with batch logic to avoid timeouts
@@ -230,17 +261,22 @@ export class BackgroundProcessor {
               interactions_found: allInteractions.length
             })
             
-            // Update extraction with accumulated results after each batch using direct supabase call
+            // Update extraction with accumulated results after each batch using NEW method
             await supabase
               .from('extractions')
               .update({
-                interactions: allInteractions,
                 source_references: allReferences,
                 errors: allErrors,
                 interaction_count: allInteractions.length,
                 updated_at: new Date().toISOString()
               })
               .eq('id', extraction.id)
+            
+            // Save interactions to separate table for better performance
+            if (interactions.length > 0) {
+              await SupabaseExtraction.saveInteractions(extraction.id, interactions)
+              console.log(`✅ Saved ${interactions.length} interactions to separate table`)
+            }
               
             // Update title and disease type after each successful batch
             await updateExtractionTitleAndDisease(extraction.id, allInteractions, allPages)

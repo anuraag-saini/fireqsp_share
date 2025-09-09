@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, handleAuthError } from '@/lib/auth'
 import { SupabaseExtraction } from '@/lib/supabase-utils'
 
-// GET - Get specific extraction data
+// GET - Get specific extraction data with interactions from separate table
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,7 +12,9 @@ export async function GET(
 
     // Await the params object before accessing its properties
     const { id } = await params
-    const extraction = await SupabaseExtraction.getExtraction(id)
+    
+    // Get extraction and interactions from separate table for better performance
+    const { extraction, interactions } = await SupabaseExtraction.getExtractionWithInteractions(id)
     
     if (!extraction) {
       return NextResponse.json({ error: 'Extraction not found' }, { status: 404 })
@@ -23,7 +25,13 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    return NextResponse.json({ extraction })
+    // Return extraction with interactions from separate table
+    return NextResponse.json({ 
+      extraction: {
+        ...extraction,
+        interactions // Add interactions from separate table
+      }
+    })
     
   } catch (error) {
     console.error('Error fetching extraction:', error)

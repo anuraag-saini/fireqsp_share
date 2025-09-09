@@ -56,18 +56,21 @@ export default function ProgressPage() {
         }
 
         const jobData = await response.json()
+        console.log('Job status update:', jobData.status, 'Extraction ID:', jobData.extraction_id)
         setJob(jobData)
         setLoading(false)
         
         if (jobData.status === 'completed') {
-          // Redirect to results after a brief delay
-          setTimeout(() => {
-            if (jobData.extraction_id) {
-              router.push(`/dashboard?extraction=${jobData.extraction_id}`)
-            } else {
-              router.push('/dashboard')
-            }
-          }, 2000)
+          console.log('Job completed! Should redirect now...')
+          // Redirect to dashboard and load the extraction directly
+          if (jobData.extraction_id) {
+            const redirectUrl = `/dashboard?loadExtraction=${jobData.extraction_id}`
+            console.log('Redirecting to:', redirectUrl)
+            router.push(redirectUrl)
+          } else {
+            console.log('No extraction ID found, redirecting to plain dashboard')
+            router.push('/dashboard')
+          }
         } else if (jobData.status === 'failed') {
           // Stop polling on failure
           return
@@ -269,12 +272,12 @@ export default function ProgressPage() {
           <div className="flex justify-between items-center text-sm text-gray-600">
             <div>
               {job.started_at && (
-                <span>Started: {new Date(job.started_at).toLocaleTimeString()}</span>
+                <span>Started: {new Date(job.started_at + 'Z').toLocaleString()}</span>
               )}
             </div>
             <div>
               {job.completed_at && (
-                <span>Completed: {new Date(job.completed_at).toLocaleTimeString()}</span>
+                <span>Completed: {new Date(job.completed_at + 'Z').toLocaleString()}</span>
               )}
             </div>
           </div>
@@ -296,7 +299,7 @@ export default function ProgressPage() {
             <button
               onClick={() => {
                 if (job.extraction_id) {
-                  router.push(`/dashboard?extraction=${job.extraction_id}`)
+                  router.push(`/dashboard?loadExtraction=${job.extraction_id}`)
                 } else {
                   router.push('/dashboard')
                 }
