@@ -7,19 +7,21 @@ export const maxDuration = 300 // 13 minutes (800 seconds) for Vercel Pro
 export async function POST(request: NextRequest) {
   const timestamp = new Date().toISOString()
   
-  console.log('🎯 PROCESS-BACKGROUND ROUTE CALLED', {
-    timestamp,
-    url: request.url,
-    method: request.method
-  })
+  // console.log('🎯 PROCESS-BACKGROUND ROUTE CALLED', {
+  //   timestamp,
+  //   url: request.url,
+  //   method: request.method
+  // })
 
   try {
     // Parse request body
-    console.log('📝 Parsing request body...')
+    // console.log('📝 Parsing request body...')
     const requestBody = await request.json()
-    console.log('Request body received:', requestBody)
+    // console.log('Request body received:', requestBody)
 
     const { jobId, userId, userEmail, fileCount } = requestBody
+
+    console.log('Processing job:', jobId)
     
     // Validate required parameters
     const missingParams = []
@@ -40,20 +42,20 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    console.log('✅ All required parameters present:', {
-      jobId,
-      userId,
-      userEmail,
-      fileCount
-    })
+    // console.log('✅ All required parameters present:', {
+    //   jobId,
+    //   userId,
+    //   userEmail,
+    //   fileCount
+    // })
     
     // DIAGNOSTIC SECTION
-    console.log('🔍 Testing BackgroundProcessor import...')
-    console.log('BackgroundProcessor:', typeof BackgroundProcessor)
-    console.log('processExtractionJob:', typeof BackgroundProcessor.processExtractionJob)
+    // console.log('🔍 Testing BackgroundProcessor import...')
+    // console.log('BackgroundProcessor:', typeof BackgroundProcessor)
+    // console.log('processExtractionJob:', typeof BackgroundProcessor.processExtractionJob)
     
     try {
-      console.log('🚀 About to call BackgroundProcessor.processExtractionJob...')
+      // console.log('🚀 About to call BackgroundProcessor.processExtractionJob...')
       
       const processingPromise = BackgroundProcessor.processExtractionJob(
         jobId,
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
         fileCount
       )
       
-      console.log('🎯 processExtractionJob call returned:', typeof processingPromise)
+      // console.log('🎯 processExtractionJob call returned:', typeof processingPromise)
       
       processingPromise.then(() => {
         console.log('✅ Background processing completed successfully for job:', jobId)
@@ -80,7 +82,7 @@ export async function POST(request: NextRequest) {
       console.error('❌ Synchronous error calling BackgroundProcessor:', syncError)
     }
     
-    console.log('📤 Returning immediate response (async processing started)')
+    // console.log('📤 Returning immediate response (async processing started)')
     
     // Return immediately - don't wait for processing to complete
     return NextResponse.json({ 

@@ -63,7 +63,7 @@ async function updateExtractionTitleAndDisease(
   let diseaseType = 'General'
   let title = diseaseType
   
-  console.log('🔍 Updating title and disease type...')
+  // console.log('🔍 Updating title and disease type...')
   console.log(`Interactions available: ${interactions.length}, Pages available: ${allPages.length}`)
   
   try {
@@ -75,9 +75,9 @@ async function updateExtractionTitleAndDisease(
         .slice(0, 3) // Take first 3 substantial references
         .join('\n\n')
       
-      console.log('📋 Combined reference text for disease detection:')
-      console.log(combinedReferences.substring(0, 500) + (combinedReferences.length > 500 ? '...' : ''))
-      console.log(`📏 Total length: ${combinedReferences.length} characters`)
+      // console.log('📋 Combined reference text for disease detection:')
+      // console.log(combinedReferences.substring(0, 500) + (combinedReferences.length > 500 ? '...' : ''))
+      // console.log(`📏 Total length: ${combinedReferences.length} characters`)
       
       if (combinedReferences.length > 50) {
         // Create a single "page" from combined reference texts
@@ -86,7 +86,7 @@ async function updateExtractionTitleAndDisease(
           metadata: { page: 1, file_name: interactions[0].filename || 'unknown' }
         }]
         
-        console.log('🤖 Calling OpenAI for disease detection...')
+        // console.log('🤖 Calling OpenAI for disease detection...')
         const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(referencePage)
         console.log(`🎯 OpenAI returned disease type: "${detectedType}"`)
         
@@ -102,13 +102,13 @@ async function updateExtractionTitleAndDisease(
       // Fallback: use actual first page if no interactions
       console.log('📋 Using first page for disease detection as fallback')
       const firstPageContent = allPages[0]?.page_content?.substring(0, 200) + '...'
-      console.log('First page content sample:', firstPageContent)
+      // console.log('First page content sample:', firstPageContent)
       
       const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(allPages.slice(0, 1))
       diseaseType = detectedType || 'General'
       title = diseaseType
       
-      console.log(`✨ Disease detected from pages: "${diseaseType}"`)
+      // console.log(`✨ Disease detected from pages: "${diseaseType}"`)
     }
     
   } catch (error) {
@@ -139,19 +139,13 @@ export class BackgroundProcessor {
     userEmail: string,
     fileCount: number
   ): Promise<{ success: boolean; error?: string }> {
-    console.log("🚀 BACKGROUND PROCESSOR STARTED", {
-      jobId,
-      userId,
-      userEmail,
-      fileCount,
-      timestamp: new Date().toISOString(),
-    })    
+    console.log("🚀 BACKGROUND PROCESSOR STARTED", { jobId, userId })    
     
     let extraction: any = null
     
     try {
       await checkAndFailStuckJobs()
-      console.log(`Starting background processing for job: ${jobId}`)
+      // console.log(`Starting background processing for job: ${jobId}`)
       
       // Update job status to processing
       await JobManager.updateJobProgress(jobId, {
@@ -160,7 +154,7 @@ export class BackgroundProcessor {
       })
       
       // Get file list from storage
-      console.log("🔹 Listing files from storage")
+      // console.log("🔹 Listing files from storage")
       const { data: fileList } = await supabase.storage
         .from('extraction-files')
         .list(`${userId}/${jobId}`)
@@ -169,7 +163,7 @@ export class BackgroundProcessor {
         throw new Error('No files found for processing')
       }
       
-      console.log(`Found ${fileList.length} files to process`)
+      // console.log(`Found ${fileList.length} files to process`)
       
       // Create extraction record (interactions go to separate table)
       extraction = await SupabaseExtraction.createExtraction({
@@ -186,16 +180,16 @@ export class BackgroundProcessor {
       
       // Link extraction to job using direct supabase call
       if (extraction?.id) {
-        console.log(`✅ Created extraction record: ${extraction.id}`)
+        // console.log(`✅ Created extraction record: ${extraction.id}`)
         // Update job with extraction_id
         await JobManager.updateJobProgress(jobId, {
           extraction_id: extraction.id
         })
-        console.log(`🔗 Linked job ${jobId} to extraction ${extraction.id}`)
+        // console.log(`🔗 Linked job ${jobId} to extraction ${extraction.id}`)
       }
       
       // Process files individually with batch logic to avoid timeouts
-      console.log('🔥 Processing files individually with timeout protection')
+      // console.log('🔥 Processing files individually with timeout protection')
       
       const BATCH_SIZE = 1 // Process 1 file at a time for maximum reliability
       const allInteractions: any[] = []
@@ -209,7 +203,7 @@ export class BackgroundProcessor {
       // Process files in batches
       for (let startIndex = 0; startIndex < fileList.length; startIndex += BATCH_SIZE) {
         const endIndex = Math.min(startIndex + BATCH_SIZE, fileList.length)
-        console.log(`📦 Processing batch ${startIndex + 1}-${endIndex} of ${fileList.length} files`)
+        // console.log(`📦 Processing batch ${startIndex + 1}-${endIndex} of ${fileList.length} files`)
         
         const batchPages: any[] = []
         
@@ -219,7 +213,7 @@ export class BackgroundProcessor {
           const fileName = fileInfo.name
           
           try {
-            console.log(`📄 Processing file: ${fileName} (${fileIndex + 1}/${fileList.length})`)
+            console.log(`📄 Processing file: ${fileName}`)
             
             // Update current file status
             await JobManager.updateJobProgress(jobId, {
@@ -280,7 +274,7 @@ export class BackgroundProcessor {
             
             batchPages.push(...pagesWithFilename)
             allPages.push(...pagesWithFilename) // Keep for disease detection
-            console.log(`✅ Successfully processed ${fileName}: ${pages.length} pages`)
+            // console.log(`✅ Successfully processed ${fileName}: ${pages.length} pages`)
             
             // Delete file after successful processing
             await FileStorage.deleteFile(filePath)
@@ -302,7 +296,7 @@ export class BackgroundProcessor {
         
         // Process AI extraction for this batch
         if (batchPages.length > 0) {
-          console.log(`🧠 Processing ${batchPages.length} pages with AI for batch ${startIndex + 1}-${endIndex}`)
+          // console.log(`🧠 Processing ${batchPages.length} pages with AI for batch ${startIndex + 1}-${endIndex}`)
           
           try {
             // Extract interactions using existing logic with timeout handling
@@ -311,7 +305,7 @@ export class BackgroundProcessor {
               'General' // We'll detect disease type later from all interactions
             )
 
-            console.log(`📊 Batch stats: ${interactionStats.successfulBatches}/${interactionStats.totalBatches} successful, ${interactionStats.timeoutBatches} timeouts`)
+            // console.log(`📊 Batch stats: ${interactionStats.successfulBatches}/${interactionStats.totalBatches} successful, ${interactionStats.timeoutBatches} timeouts`)
 
             // Extract references using existing logic with timeout handling
             const { references, errors: referenceErrors } = await extractReferencesFromPages(batchPages)
@@ -321,7 +315,7 @@ export class BackgroundProcessor {
             Object.assign(allReferences, references)
             allErrors.push(...interactionErrors, ...referenceErrors)
             
-            console.log(`✅ Found ${interactions.length} interactions in batch ${startIndex + 1}-${endIndex}`)
+            // console.log(`✅ Found ${interactions.length} interactions in batch ${startIndex + 1}-${endIndex}`)
             
             // Update progress after each batch
             await JobManager.updateJobProgress(jobId, {
@@ -344,7 +338,7 @@ export class BackgroundProcessor {
             // Save interactions to separate table for better performance
             if (interactions.length > 0) {
               await SupabaseExtraction.saveInteractions(extraction.id, interactions)
-              console.log(`✅ Saved ${interactions.length} interactions to separate table`)
+              // console.log(`✅ Saved ${interactions.length} interactions to separate table`)
             }
               
             // Update title and disease type after each successful batch
@@ -358,25 +352,25 @@ export class BackgroundProcessor {
         
         // Small delay between batches to avoid overwhelming the system
         if (endIndex < fileList.length) {
-          console.log(`⏳ Waiting 1 second before next batch...`)
+          // console.log(`⏳ Waiting 1 second before next batch...`)
           await new Promise(resolve => setTimeout(resolve, 1000))
         }
       }
       
-      console.log(`🎯 All ${fileList.length} files processed, finalizing`)
+      // console.log(`🎯 All ${fileList.length} files processed, finalizing`)
       
       // Determine final status based on success/failure ratio
       let finalStatus: 'completed' | 'partial' | 'failed' = 'failed'
       
       if (filesSuccessful === fileList.length) {
         finalStatus = 'completed'
-        console.log('✅ All files processed successfully - status: completed')
+        // console.log('✅ All files processed successfully - status: completed')
       } else if (filesSuccessful > 0) {
         finalStatus = 'partial'
-        console.log(`⚠️ ${filesSuccessful}/${fileList.length} files processed successfully - status: partial`)
+        // console.log(`⚠️ ${filesSuccessful}/${fileList.length} files processed successfully - status: partial`)
       } else {
         finalStatus = 'failed'
-        console.log('❌ No files processed successfully - status: failed')
+        // console.log('❌ No files processed successfully - status: failed')
       }
       
       // Final extraction update - ensure title and disease type are set
