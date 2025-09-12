@@ -146,7 +146,7 @@ async function processFilePages(
       // Add 10 minute timeout for OpenAI call
       const result = await withTimeout(
         callOpenAIForExtraction(combinedText, pageNumbers, diseaseType),
-        10 * 60 * 1000, // 10 minutes
+        2 * 60 * 1000, // 10 minutes
         `OpenAI extraction for batch ${batchIndex} of ${fileName}`
       )
       
@@ -179,7 +179,7 @@ async function processFilePages(
           try {
             const individualResult = await withTimeout(
               callOpenAIForExtraction(doc.page_content, doc.metadata.page.toString(), diseaseType),
-              10 * 60 * 1000, // 10 minutes
+              2 * 60 * 1000, // 10 minutes
               `OpenAI extraction for page ${doc.metadata.page} of ${fileName}`
             )
             
@@ -261,7 +261,7 @@ export async function extractReferencesFromPages(
       // Add timeout for reference extraction
       const referenceString = await withTimeout(
         callOpenAIForReferences(combinedText, pageNumbers),
-        5 * 60 * 1000, // 5 minutes for references (shorter than extraction)
+        2 * 60 * 1000, // 5 minutes for references (shorter than extraction)
         `Reference extraction for ${fileName}`
       )
       
@@ -351,7 +351,11 @@ async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
   const { model, apiKey } = await getOpenAIModel()
   
   // Create OpenAI client with specific key
-  const openai = new OpenAI({ apiKey })
+  const openai = new OpenAI({ 
+    apiKey,
+    timeout: 90 * 1000,
+    baseURL: 'https://api.openai.com/v1', // Explicit endpoint
+  })
   
   console.log('🎨 Disease Detection OpenAI Call:')
   console.log('Model:', model)
@@ -386,9 +390,22 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
   
   // Get dynamic model and rotating API key
   const { model, apiKey } = await getOpenAIModel()
+
+  // ADD THESE LOGS:
+  console.log('🌐 ENVIRONMENT CHECK:')
+  console.log('- Running on:', process.env.VERCEL ? 'Vercel' : 'Local')
+  console.log('- Region:', process.env.VERCEL_REGION || 'local')
+  // console.log('- OpenAI API Key (first 10 chars):', apiKey.substring(0, 10))
+  // console.log('- Text length:', text.length)
+  // console.log('🚀 Starting OpenAI API call...')
   
   // Create OpenAI client with specific key
-  const openai = new OpenAI({ apiKey })
+  const openai = new OpenAI({ 
+    apiKey,  
+    timeout: 90 * 1000, // 60 second HTTP timeout
+    baseURL: 'https://api.openai.com/v1', // Explicit endpoint
+
+  })
   
   console.log('=== OpenAI Extraction Debug ===')
   console.log('Disease type:', diseaseType)
@@ -439,7 +456,11 @@ async function callOpenAIForReferences(text: string, pageNumbers: string) {
   const { model, apiKey } = await getOpenAIModel()
   
   // Create OpenAI client with specific key
-  const openai = new OpenAI({ apiKey })
+  const openai = new OpenAI({ 
+    apiKey,
+    timeout: 90 * 1000,
+    baseURL: 'https://api.openai.com/v1', // Explicit endpoint
+  })
   
   const response = await openai.chat.completions.create({
     model,

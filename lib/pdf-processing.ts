@@ -52,7 +52,8 @@ export async function extractPagesFromPDF(file: File): Promise<DocumentPage[]> {
     if (pages.length === 0) {
       throw new Error('No text content could be extracted from PDF')
     }
-    
+
+    console.log(`✅ PDF extraction completed: ${pages.length} pages`)
     return pages
     
   } catch (error) {
