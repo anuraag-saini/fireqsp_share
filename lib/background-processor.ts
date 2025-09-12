@@ -13,6 +13,47 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// Add this function at the top of the file, after imports
+async function checkAndFailStuckJobs() {
+  try {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+    
+    // Find stuck jobs
+    const { data: stuckJobs } = await supabase
+      .from('extraction_jobs')
+      .select('id')
+      .eq('status', 'processing')
+      .lt('created_at', twoHoursAgo)
+    
+    if (stuckJobs && stuckJobs.length > 0) {
+      console.log(`⏰ Found ${stuckJobs.length} stuck jobs, marking as failed`)
+      
+      // Mark jobs as failed
+      for (const job of stuckJobs) {
+        await supabase
+          .from('extraction_jobs')
+          .update({
+            status: 'failed',
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', job.id)
+        
+        // Also mark extractions as failed
+        await supabase
+          .from('extractions')
+          .update({
+            status: 'failed',
+            errors: ['Job timeout after 2 hours - system hang detected'],
+            updated_at: new Date().toISOString()
+          })
+          .eq('job_id', job.id)
+      }
+    }
+  } catch (error) {
+    console.error('Error checking stuck jobs:', error)
+  }
+}
+
 // ONLY change this function in your current background-processor.ts file:
 async function updateExtractionTitleAndDisease(
   extractionId: string,
@@ -109,6 +150,7 @@ export class BackgroundProcessor {
     let extraction: any = null
     
     try {
+      await checkAndFailStuckJobs()
       console.log(`Starting background processing for job: ${jobId}`)
       
       // Update job status to processing

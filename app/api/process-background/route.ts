@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BackgroundProcessor } from '@/lib/background-processor'
 
+export const maxDuration = 900 // 15 minutes (900 seconds) for Vercel Pro
+
 export async function POST(request: NextRequest) {
   const timestamp = new Date().toISOString()
   
