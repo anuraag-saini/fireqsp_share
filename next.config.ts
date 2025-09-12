@@ -5,9 +5,10 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: "50mb",
-      allowedOrigins: ['localhost:3000', 'fireqsp.com']
+      allowedOrigins: ['localhost:3000', 'fireqsp.com', 'fireqsp-production.up.railway.app']
     }
   },
+  
   async headers() {
     return [
       {

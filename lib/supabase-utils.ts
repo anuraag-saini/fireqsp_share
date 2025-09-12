@@ -283,7 +283,31 @@ export class SupabaseExtraction {
 
   // Delete extraction and its interactions
   static async deleteExtraction(id: string): Promise<void> {
-    // Interactions will be deleted automatically due to foreign key CASCADE
+    // Delete in correct order: jobs first, then interactions, then extraction
+    
+    // 1. Delete related extraction_jobs first
+    const { error: jobError } = await supabaseAdmin
+      .from('extraction_jobs')
+      .delete()
+      .eq('extraction_id', id)
+    
+    if (jobError) {
+      console.error('Error deleting extraction jobs:', jobError)
+      // Continue anyway - job might not exist
+    }
+    
+    // 2. Delete interactions (should cascade but let's be explicit)
+    const { error: interactionError } = await supabaseAdmin
+      .from('interactions')
+      .delete()
+      .eq('extraction_id', id)
+    
+    if (interactionError) {
+      console.error('Error deleting interactions:', interactionError)
+      // Continue anyway
+    }
+    
+    // 3. Finally delete the extraction
     const { error } = await supabaseAdmin
       .from('extractions')
       .delete()
