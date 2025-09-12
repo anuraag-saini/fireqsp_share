@@ -12,7 +12,7 @@ export async function GET() {
     const { data: processingJobs } = await supabase
       .from('extraction_jobs')
       .select('id, user_id, created_at, started_at, current_file, total_files, files_processed')
-      .eq('status', 'processing')
+      .in('status', ['processing', 'queued'])
       .order('created_at', { ascending: false })
     
     return NextResponse.json({ 
