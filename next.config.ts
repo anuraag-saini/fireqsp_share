@@ -8,14 +8,6 @@ const nextConfig: NextConfig = {
       allowedOrigins: ['localhost:3000', 'fireqsp.com']
     }
   },
-  
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb',
-    },
-    responseLimit: false,
-  },
-  
   async headers() {
     return [
       {

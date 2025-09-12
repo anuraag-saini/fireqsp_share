@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BackgroundProcessor } from '@/lib/background-processor'
 
-export const maxDuration = 800 // 13 minutes (800 seconds) for Vercel Pro
+export const maxDuration = 300 // 13 minutes (800 seconds) for Vercel Pro
 
 export async function POST(request: NextRequest) {
   const timestamp = new Date().toISOString()
@@ -47,26 +47,38 @@ export async function POST(request: NextRequest) {
       fileCount
     })
     
-    console.log('🚀 Starting background processing...')
+    // DIAGNOSTIC SECTION
+    console.log('🔍 Testing BackgroundProcessor import...')
+    console.log('BackgroundProcessor:', typeof BackgroundProcessor)
+    console.log('processExtractionJob:', typeof BackgroundProcessor.processExtractionJob)
     
-    // Process the job in the background WITHOUT waiting for completion
-    // This makes the processing truly asynchronous
-    BackgroundProcessor.processExtractionJob(
-      jobId,
-      userId,
-      userEmail,
-      fileCount
-    ).then(() => {
-      console.log('✅ Background processing completed successfully')
-    }).catch(error => {
-      console.error('❌ Background processing failed:', {
-        error: error.message,
-        stack: error.stack,
+    try {
+      console.log('🚀 About to call BackgroundProcessor.processExtractionJob...')
+      
+      const processingPromise = BackgroundProcessor.processExtractionJob(
         jobId,
-        userId
+        userId,
+        userEmail,
+        fileCount
+      )
+      
+      console.log('🎯 processExtractionJob call returned:', typeof processingPromise)
+      
+      processingPromise.then(() => {
+        console.log('✅ Background processing completed successfully for job:', jobId)
+      }).catch(error => {
+        console.error('❌ Background processing failed:', {
+          error: error.message,
+          stack: error.stack,
+          jobId,
+          userId,
+          timestamp: new Date().toISOString()
+        })
       })
-      // Error handling is done inside BackgroundProcessor
-    })
+      
+    } catch (syncError) {
+      console.error('❌ Synchronous error calling BackgroundProcessor:', syncError)
+    }
     
     console.log('📤 Returning immediate response (async processing started)')
     
