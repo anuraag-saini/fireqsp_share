@@ -283,37 +283,58 @@ export class SupabaseExtraction {
 
   // Delete extraction and its interactions
   static async deleteExtraction(id: string): Promise<void> {
-    // Delete in correct order: jobs first, then interactions, then extraction
-    
-    // 1. Delete related extraction_jobs first
-    const { error: jobError } = await supabaseAdmin
-      .from('extraction_jobs')
-      .delete()
-      .eq('extraction_id', id)
-    
-    if (jobError) {
-      console.error('Error deleting extraction jobs:', jobError)
-      // Continue anyway - job might not exist
-    }
-    
-    // 2. Delete interactions (should cascade but let's be explicit)
-    const { error: interactionError } = await supabaseAdmin
-      .from('interactions')
-      .delete()
-      .eq('extraction_id', id)
-    
-    if (interactionError) {
-      console.error('Error deleting interactions:', interactionError)
-      // Continue anyway
-    }
-    
-    // 3. Finally delete the extraction
-    const { error } = await supabaseAdmin
-      .from('extractions')
-      .delete()
-      .eq('id', id)
+    try {
+      // Step 1: Find the related job_id first
+      const { data: extraction } = await supabaseAdmin
+        .from('extractions')
+        .select('job_id')
+        .eq('id', id)
+        .single()
+      
+      const jobId = extraction?.job_id
+      
+      // Step 2: Remove the foreign key references first
+      if (jobId) {
+        // Clear the extraction_id from jobs table
+        await supabaseAdmin
+          .from('extraction_jobs')
+          .update({ extraction_id: null })
+          .eq('id', jobId)
+      }
+      
+      // Clear the job_id from extractions table
+      await supabaseAdmin
+        .from('extractions')
+        .update({ job_id: null })
+        .eq('id', id)
+      
+      // Step 3: Now we can safely delete
+      // Delete interactions first
+      await supabaseAdmin
+        .from('interactions')
+        .delete()
+        .eq('extraction_id', id)
+      
+      // Delete the job if it exists
+      if (jobId) {
+        await supabaseAdmin
+          .from('extraction_jobs')
+          .delete()
+          .eq('id', jobId)
+      }
+      
+      // Finally delete the extraction
+      const { error } = await supabaseAdmin
+        .from('extractions')
+        .delete()
+        .eq('id', id)
 
-    if (error) throw error
+      if (error) throw error
+      
+    } catch (error) {
+      console.error('Error in deleteExtraction:', error)
+      throw error
+    }
   }
 
   // Simple in-memory cache
