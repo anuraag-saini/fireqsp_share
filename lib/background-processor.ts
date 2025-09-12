@@ -238,14 +238,33 @@ export class BackgroundProcessor {
             // Convert ArrayBuffer to File-like object for processing
 
             // Create a File-like object that works in Node.js
-            const fileBlob = new Blob([fileBuffer], { type: 'application/pdf' })
-            const file = Object.assign(fileBlob, {
+            // const fileBlob = new Blob([fileBuffer], { type: 'application/pdf' })
+            // const file = Object.assign(fileBlob, {
+            //   name: fileName,
+            //   lastModified: Date.now(),
+            //   webkitRelativePath: '',
+            //   size: fileBuffer.byteLength,
+            //   type: 'application/pdf'
+            // })
+
+            // Create File-like object compatible with Node.js
+            const file = {
               name: fileName,
-              lastModified: Date.now(),
-              webkitRelativePath: '',
               size: fileBuffer.byteLength,
-              type: 'application/pdf'
-            })
+              type: 'application/pdf',
+              lastModified: Date.now(),
+              stream: () => new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new Uint8Array(fileBuffer))
+                  controller.close()
+                }
+              }),
+              arrayBuffer: () => Promise.resolve(fileBuffer.slice()),
+              slice: (start = 0, end = fileBuffer.byteLength) => 
+                new Blob([fileBuffer.slice(start, end)], { type: 'application/pdf' }),
+              text: () => Promise.resolve(''),
+              webkitRelativePath: ''
+            } as File
             
             // Process PDF using existing logic
             const pages = await extractPagesFromPDF(file)
