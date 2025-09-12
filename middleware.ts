@@ -8,6 +8,7 @@ const isPublicRoute = createRouteMatcher([
   '/about',
   '/pricing',
   '/api/process-background(.*)',
+  '/api/test-processing(.*)',
 ])
 
 const isAdminRoute = createRouteMatcher([
