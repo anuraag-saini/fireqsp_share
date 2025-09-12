@@ -146,7 +146,7 @@ async function processFilePages(
       // Add 10 minute timeout for OpenAI call
       const result = await withTimeout(
         callOpenAIForExtraction(combinedText, pageNumbers, diseaseType),
-        5 * 60 * 1000, // 10 minutes
+        2 * 60 * 1000, // 10 minutes
         `OpenAI extraction for batch ${batchIndex} of ${fileName}`
       )
       
@@ -179,7 +179,7 @@ async function processFilePages(
           try {
             const individualResult = await withTimeout(
               callOpenAIForExtraction(doc.page_content, doc.metadata.page.toString(), diseaseType),
-              5 * 60 * 1000, // 10 minutes
+              2 * 60 * 1000, // 10 minutes
               `OpenAI extraction for page ${doc.metadata.page} of ${fileName}`
             )
             
@@ -261,7 +261,7 @@ export async function extractReferencesFromPages(
       // Add timeout for reference extraction
       const referenceString = await withTimeout(
         callOpenAIForReferences(combinedText, pageNumbers),
-        5 * 60 * 1000, // 5 minutes for references (shorter than extraction)
+        2 * 60 * 1000, // 5 minutes for references (shorter than extraction)
         `Reference extraction for ${fileName}`
       )
       
@@ -353,9 +353,9 @@ async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
   // Create OpenAI client with specific key
   const openai = new OpenAI({ 
     apiKey,
-    timeout: 60 * 1000,
+    timeout: 90 * 1000,
     baseURL: 'https://api.openai.com/v1', // Explicit endpoint
-   })
+  })
   
   console.log('🎨 Disease Detection OpenAI Call:')
   console.log('Model:', model)
@@ -402,10 +402,10 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
   // Create OpenAI client with specific key
   const openai = new OpenAI({ 
     apiKey,  
-    timeout: 60 * 1000, // 60 second HTTP timeout
-     baseURL: 'https://api.openai.com/v1', // Explicit endpoint
+    timeout: 90 * 1000, // 60 second HTTP timeout
+    baseURL: 'https://api.openai.com/v1', // Explicit endpoint
 
-    })
+  })
   
   console.log('=== OpenAI Extraction Debug ===')
   console.log('Disease type:', diseaseType)
@@ -458,7 +458,7 @@ async function callOpenAIForReferences(text: string, pageNumbers: string) {
   // Create OpenAI client with specific key
   const openai = new OpenAI({ 
     apiKey,
-    timeout: 60 * 1000,
+    timeout: 90 * 1000,
     baseURL: 'https://api.openai.com/v1', // Explicit endpoint
   })
   
