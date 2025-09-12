@@ -27,7 +27,7 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showLabels, setShowLabels] = useState(true)
+  const [showLabels, setShowLabels] = useState(false)
 
   // Get user limits
   useEffect(() => {
