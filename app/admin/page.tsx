@@ -18,6 +18,8 @@ export default function AdminPage() {
   const { user, isLoaded } = useUser()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'activity' | 'settings'>('overview')
+
+  const [processingJobs, setProcessingJobs] = useState<any[] | null>(null)
   
   // Settings state
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini')
@@ -119,6 +121,85 @@ export default function AdminPage() {
       setLoading(false)
       // Clear message after 5 seconds
       setTimeout(() => setMessage(''), 5000)
+    }
+  }
+
+  const loadProcessingJobs = async () => {
+    setLoading(true)
+    setMessage('')
+    
+    try {
+      const response = await fetch('/api/admin/cleanup-stuck-jobs')
+      if (response.ok) {
+        const result = await response.json()
+        setProcessingJobs(result.jobs)
+        if (result.count === 0) {
+          setMessage('✅ No processing jobs found')
+        }
+      } else {
+        setMessage('❌ Failed to load processing jobs')
+      }
+    } catch (error) {
+      setMessage('❌ Error loading jobs')
+    } finally {
+      setLoading(false)
+      setTimeout(() => setMessage(''), 3000)
+    }
+  }
+
+  const killSpecificJob = async (jobId: string) => {
+    if (!confirm('Are you sure you want to kill this job?')) {
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch('/api/admin/cleanup-stuck-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId })
+      })
+      
+      if (response.ok) {
+        setMessage('✅ Job killed successfully!')
+        // Refresh the list
+        loadProcessingJobs()
+      } else {
+        setMessage('❌ Failed to kill job')
+      }
+    } catch (error) {
+      setMessage('❌ Error killing job')
+    } finally {
+      setLoading(false)
+      setTimeout(() => setMessage(''), 3000)
+    }
+  }
+
+  const cleanupOldJobs = async () => {
+    if (!confirm('Kill all jobs older than 2 hours?')) {
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch('/api/admin/cleanup-stuck-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}) // Empty body = cleanup old jobs
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        setMessage(result.count > 0 ? `✅ Killed ${result.count} old jobs` : '✅ No old jobs to kill')
+        loadProcessingJobs()
+      } else {
+        setMessage('❌ Failed to cleanup old jobs')
+      }
+    } catch (error) {
+      setMessage('❌ Error cleaning up jobs')
+    } finally {
+      setLoading(false)
+      setTimeout(() => setMessage(''), 3000)
     }
   }
 
@@ -282,6 +363,75 @@ export default function AdminPage() {
                 >
                   {loading ? 'Saving...' : 'Save Model Settings'}
                 </button>
+              </div>
+            </div>
+
+            {/*Add this right after the OpenAI Configuration card and before User Subscription Management */}
+
+            {/* Job Management */}
+            <div className="bg-white rounded-lg border p-6">
+              <h3 className="text-lg font-semibold mb-4">Job Management</h3>
+              
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <button 
+                    onClick={loadProcessingJobs}
+                    disabled={loading}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {loading ? 'Loading...' : 'Show Processing Jobs'}
+                  </button>
+                  
+                  <button 
+                    onClick={cleanupOldJobs}
+                    disabled={loading}
+                    className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
+                  >
+                    Kill Jobs 1+ Hours Old
+                  </button>
+                </div>
+
+                {processingJobs && processingJobs.length > 0 && (
+                  <div className="mt-6">
+                    <h4 className="font-medium mb-3">Currently Processing Jobs:</h4>
+                    <div className="space-y-2">
+                      {processingJobs.map((job: any) => {
+                        const startTime = new Date(job.created_at).toLocaleString()
+                        const duration = Math.round((Date.now() - new Date(job.created_at).getTime()) / 1000 / 60)
+                        
+                        return (
+                          <div key={job.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
+                            <div className="flex-1">
+                              <div className="text-sm font-mono text-gray-600">
+                                {job.id.slice(0, 8)}...
+                              </div>
+                              <div className="text-sm text-gray-700">
+                                Started: {startTime} ({duration}m ago)
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                Progress: {job.files_processed || 0}/{job.total_files || 0} files
+                                {job.current_file && ` • ${job.current_file}`}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => killSpecificJob(job.id)}
+                              disabled={loading}
+                              className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50"
+                            >
+                              Kill
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {processingJobs && processingJobs.length === 0 && (
+                  <div className="text-green-600 text-sm">
+                    ✅ No processing jobs found - system is healthy!
+                  </div>
+                )}
               </div>
             </div>
 
