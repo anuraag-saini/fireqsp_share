@@ -31,6 +31,12 @@ export function Navigation() {
             {/* Main Navigation Links */}
             <div className="hidden md:flex gap-6">
               <Link 
+                href="/about"
+                className="px-4 py-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+              >
+                About
+              </Link>
+              <Link 
                 href="/dashboard"
                 className="px-4 py-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
               >
