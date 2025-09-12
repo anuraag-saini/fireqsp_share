@@ -103,7 +103,7 @@ export async function extractInteractionsFromPages(
   }
   
   // Log final stats
-  console.log(`📊 Extraction Stats: ${stats.successfulBatches}/${stats.totalBatches} batches succeeded, ${stats.timeoutBatches} timed out, ${stats.processedPages}/${stats.totalPages} pages processed`)
+  // console.log(`📊 Extraction Stats: ${stats.successfulBatches}/${stats.totalBatches} batches succeeded, ${stats.timeoutBatches} timed out, ${stats.processedPages}/${stats.totalPages} pages processed`)
   
   return { 
     interactions: extractedInteractions, 
@@ -140,7 +140,7 @@ async function processFilePages(
     const combinedText = batch.map(doc => doc.page_content).join('\n\n')
     const pageNumbers = batch.map(doc => doc.metadata.page).join(',')
     
-    console.log(`🔄 Processing batch ${batchIndex}/${totalBatches} for ${fileName} (${batch.length} pages)`)
+    // console.log(`🔄 Processing batch ${batchIndex}/${totalBatches} for ${fileName} (${batch.length} pages)`)
     
     try {
       // Add 10 minute timeout for OpenAI call
@@ -165,14 +165,14 @@ async function processFilePages(
         
         stats.successfulBatches++
         stats.processedPages += batch.length
-        console.log(`✅ Batch ${batchIndex}/${totalBatches} succeeded: ${result.interactions.length} interactions`)
+        // console.log(`✅ Batch ${batchIndex}/${totalBatches} succeeded: ${result.interactions.length} interactions`)
       }
       
       // Fallback logic for low-yield batches
       if (result.interactions.length < batch.length * EXTRACTION_CONFIG.FALLBACK_THRESHOLD) {
         const fallbackMessage = `Batch ${batchIndex} yielded only ${result.interactions.length} interactions for ${batch.length} pages; reprocessing individually.`
         errors.push(fallbackMessage)
-        console.log(`⚠️ ${fallbackMessage}`)
+        // console.log(`⚠️ ${fallbackMessage}`)
         
         // Process individual pages with timeout
         for (const doc of batch) {
@@ -196,7 +196,7 @@ async function processFilePages(
                 interactions.push(processedInteraction)
               })
             }
-            console.log(`✅ Individual page ${doc.metadata.page} processed`)
+            // console.log(`✅ Individual page ${doc.metadata.page} processed`)
             
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error)
@@ -205,9 +205,9 @@ async function processFilePages(
             errors.push(`Page ${doc.metadata.page} failed: ${errorMsg}`)
             
             if (isTimeout) {
-              console.log(`⏰ Page ${doc.metadata.page} of ${fileName} timed out after 10 minutes`)
+              // console.log(`⏰ Page ${doc.metadata.page} of ${fileName} timed out after 10 minutes`)
             } else {
-              console.log(`❌ Page ${doc.metadata.page} of ${fileName} failed: ${errorMsg}`)
+              console.error(`❌ Page ${doc.metadata.page} of ${fileName} failed: ${errorMsg}`)
             }
           }
         }
@@ -221,16 +221,16 @@ async function processFilePages(
       
       if (isTimeout) {
         stats.timeoutBatches++
-        console.log(`⏰ Batch ${batchIndex}/${totalBatches} of ${fileName} timed out after 10 minutes - skipping to next batch`)
+        // console.log(`⏰ Batch ${batchIndex}/${totalBatches} of ${fileName} timed out after 10 minutes - skipping to next batch`)
       } else {
         stats.failedBatches++
-        console.log(`❌ Batch ${batchIndex}/${totalBatches} of ${fileName} failed: ${errorMsg}`)
+        console.error(`❌ Batch ${batchIndex}/${totalBatches} of ${fileName} failed: ${errorMsg}`)
       }
     }
   }
   
   const successRate = stats.totalBatches > 0 ? (stats.successfulBatches / stats.totalBatches * 100).toFixed(1) : '0'
-  console.log(`📈 ${fileName} completed: ${stats.successfulBatches}/${stats.totalBatches} batches (${successRate}%), ${stats.timeoutBatches} timeouts, ${interactions.length} interactions`)
+  console.log(`📈 ${fileName}: ${interactions.length} interactions extracted`)
   
   return { interactions, errors, stats }
 }
@@ -267,7 +267,7 @@ export async function extractReferencesFromPages(
       
       if (referenceString && !['', 'none', 'not found', 'n/a', 'cannot identify', 'not applicable'].includes(referenceString.toLowerCase())) {
         references[fileName] = referenceString
-        console.log(`✅ Reference extracted for ${fileName}`)
+        // console.log(`✅ Reference extracted for ${fileName}`)
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
@@ -276,9 +276,9 @@ export async function extractReferencesFromPages(
       referenceErrors.push(`Failed to extract reference for file ${fileName}: ${errorMsg}`)
       
       if (isTimeout) {
-        console.log(`⏰ Reference extraction for ${fileName} timed out after 5 minutes`)
+        // console.log(`⏰ Reference extraction for ${fileName} timed out after 5 minutes`)
       } else {
-        console.log(`❌ Reference extraction for ${fileName} failed: ${errorMsg}`)
+        console.error(`❌ Reference extraction for ${fileName} failed: ${errorMsg}`)
       }
     }
   }
@@ -305,27 +305,27 @@ export async function extractDiseaseTypeFromPages(
   const combinedText = firstFilePages.map(doc => doc.page_content).join('\n\n')
   const pageNumbers = firstFilePages.map(doc => doc.metadata.page).join(',')
   
-  console.log('📝 Disease detection input:')
-  console.log(`Pages: ${pageNumbers}, Text length: ${combinedText.length}`)
+  // console.log('📝 Disease detection input:')
+  // console.log(`Pages: ${pageNumbers}, Text length: ${combinedText.length}`)
   // console.log('Sample text:', combinedText.substring(0, 300) + (combinedText.length > 300 ? '...' : ''))
   
   try {
     // Add timeout for disease type detection
-    console.log('🚀 Starting OpenAI disease detection call...')
+    // console.log('🚀 Starting OpenAI disease detection call...')
     const diseaseType = await withTimeout(
       callOpenAIForDiseaseType(combinedText, pageNumbers),
       60 * 1000, // 60 seconds
       'Disease type detection'
     )
     
-    console.log(`🎯 Raw OpenAI response: "${diseaseType}"`)
+    // console.log(`🎯 Raw OpenAI response: "${diseaseType}"`)
     
     if (diseaseType && diseaseType.trim() && !['', 'none', 'not found', 'unknown', 'general'].includes(diseaseType.toLowerCase().trim())) {
       const cleanedType = diseaseType.trim()
-      console.log(`✅ Disease type detected: "${cleanedType}"`)
+      // console.log(`✅ Disease type detected: "${cleanedType}"`)
       return { diseaseType: cleanedType, errors: [] }
     } else {
-      console.log(`ℹ️ No specific disease type detected (got: "${diseaseType}"), using 'General'`)
+      // console.log(`ℹ️ No specific disease type detected (got: "${diseaseType}"), using 'General'`)
       return { diseaseType: 'General', errors: [] }
     }
   } catch (error) {
@@ -335,9 +335,9 @@ export async function extractDiseaseTypeFromPages(
     diseaseErrors.push(`Failed to extract disease type: ${errorMsg}`)
     
     if (isTimeout) {
-      console.log(`⏰ Disease type detection timed out after 60 seconds, using 'General'`)
+      // console.log(`⏰ Disease type detection timed out after 60 seconds, using 'General'`)
     } else {
-      console.log(`❌ Disease type detection failed: ${errorMsg}, using 'General'`)
+      console.error(`❌ Disease type detection failed: ${errorMsg}, using 'General'`)
     }
     
     return { diseaseType: 'General', errors: diseaseErrors }
@@ -357,11 +357,11 @@ async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
     baseURL: 'https://api.openai.com/v1', // Explicit endpoint
   })
   
-  console.log('🎨 Disease Detection OpenAI Call:')
-  console.log('Model:', model)
-  console.log('API Key:', apiKey.slice(0, 10) + '...')
-  console.log('Text length:', text.length)
-  console.log('First 200 chars:', text.substring(0, 200) + '...')
+  // console.log('🎨 Disease Detection OpenAI Call:')
+  // console.log('Model:', model)
+  // console.log('API Key:', apiKey.slice(0, 10) + '...')
+  // console.log('Text length:', text.length)
+  // console.log('First 200 chars:', text.substring(0, 200) + '...')
   
   const response = await openai.chat.completions.create({
     model,
@@ -380,7 +380,7 @@ async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
   })
   
   const result = response.choices[0]?.message?.content?.trim() || 'General'
-  console.log('📝 OpenAI raw result for disease detection:', `"${result}"`)
+  // console.log('📝 OpenAI raw result for disease detection:', `"${result}"`)
   
   return result
 }
@@ -392,9 +392,9 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
   const { model, apiKey } = await getOpenAIModel()
 
   // ADD THESE LOGS:
-  console.log('🌐 ENVIRONMENT CHECK:')
-  console.log('- Running on:', process.env.VERCEL ? 'Vercel' : 'Local')
-  console.log('- Region:', process.env.VERCEL_REGION || 'local')
+  // console.log('🌐 ENVIRONMENT CHECK:')
+  // console.log('- Running on:', process.env.VERCEL ? 'Vercel' : 'Local')
+  // console.log('- Region:', process.env.VERCEL_REGION || 'local')
   // console.log('- OpenAI API Key (first 10 chars):', apiKey.substring(0, 10))
   // console.log('- Text length:', text.length)
   // console.log('🚀 Starting OpenAI API call...')
@@ -407,10 +407,10 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
 
   })
   
-  console.log('=== OpenAI Extraction Debug ===')
-  console.log('Disease type:', diseaseType)
-  console.log('Using model:', model)
-  console.log('Text length:', text.length)
+  // console.log('=== OpenAI Extraction Debug ===')
+  // console.log('Disease type:', diseaseType)
+  // console.log('Using model:', model)
+  // console.log('Text length:', text.length)
   
   const response = await openai.chat.completions.create({
     model,
@@ -436,7 +436,7 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
     
     try {
       const parsed = JSON.parse(cleanedText)
-      console.log(`✅ OpenAI returned ${parsed.interactions?.length || 0} interactions`)
+      // console.log(`✅ OpenAI returned ${parsed.interactions?.length || 0} interactions`)
       
       return parsed
     } catch (parseError) {
@@ -497,7 +497,7 @@ async function getOpenAIModel(): Promise<{ model: string, apiKey: string }> {
     const model = data?.openai_model || 'gpt-4o-mini'
     const apiKey = openAIKeyManager.getNextKey() // Get rotated key
     
-    console.log(`🤖 Using OpenAI model: ${model}`)
+    // console.log(`🤖 Using OpenAI model: ${model}`)
     return { model, apiKey }
   } catch (error) {
     console.log('⚠️ Using default model due to error:', error)
