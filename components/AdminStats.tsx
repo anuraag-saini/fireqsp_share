@@ -171,27 +171,6 @@ export function AdminStats() {
           </button>
         </div>
       </div>
-
-      {/* System Health */}
-      <div className="bg-white p-6 rounded-lg border">
-        <h3 className="text-lg font-semibold mb-4">System Health</h3>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Database Connection</span>
-            <span className="text-sm text-green-600 font-medium">✅ Connected</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">API Response Time</span>
-            <span className="text-sm text-green-600 font-medium">✅ Good (&lt;2s)</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Error Rate</span>
-            <span className={`text-sm font-medium ${stats.errorRate > 10 ? 'text-red-600' : 'text-green-600'}`}>
-              {stats.errorRate > 10 ? '⚠️' : '✅'} {stats.errorRate}%
-            </span>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

@@ -7,8 +7,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "50mb",
       allowedOrigins: ['localhost:3000', 'fireqsp.com', 'fireqsp-production.up.railway.app']
     }
-  },
-  
+  },  
   async headers() {
     return [
       {
@@ -31,5 +30,16 @@ const nextConfig: NextConfig = {
     ]
   }
 };
+
+// Handle graceful shutdown for Railway
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('Received SIGINT, shutting down gracefully...');
+  process.exit(0);
+});
 
 export default nextConfig;
