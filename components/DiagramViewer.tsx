@@ -123,10 +123,10 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
         let arrowColor = interactionColors.default
 
         if (interactionType.includes('inhib') || interactionType.includes('negative') || interactionType.includes('downregulation')) {
-          arrow = showLabels ? '-.->|inhibits|' : '-.->|⊣|'
+          arrow = showLabels ? '-.->|inhibits|' : '-.->'
           arrowColor = interactionColors.inhibition
         } else if (interactionType.includes('activ') || interactionType.includes('positive') || interactionType.includes('upregulation')) {
-          arrow = showLabels ? '-->' : '-->'
+          arrow = showLabels ? '-->|positive|' : '-->'
           arrowColor = interactionColors.activation
         } else if (interactionType.includes('bind')) {
           arrow = showLabels ? '-->|binds|' : '-->'
@@ -264,15 +264,27 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
       const ctx = canvas.getContext('2d')
       const img = new Image()
 
+      // Get SVG dimensions
+      const svgRect = svg.getBoundingClientRect()
       const svgData = new XMLSerializer().serializeToString(svg)
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
-      const url = URL.createObjectURL(svgBlob)
+      
+      // Create data URL instead of blob URL to avoid taint
+      const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgData)}`
 
       img.onload = () => {
-        canvas.width = img.width * 2
-        canvas.height = img.height * 2
-        ctx?.scale(2, 2)
-        ctx?.drawImage(img, 0, 0)
+        // Set canvas size (2x for better quality)
+        canvas.width = (svgRect.width || img.width) * 2
+        canvas.height = (svgRect.height || img.height) * 2
+        
+        // Fill with white background
+        if (ctx) {
+          ctx.fillStyle = 'white'
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+          
+          // Scale for high resolution
+          ctx.scale(2, 2)
+          ctx.drawImage(img, 0, 0, svgRect.width || img.width, svgRect.height || img.height)
+        }
 
         canvas.toBlob((blob) => {
           if (blob) {
@@ -283,12 +295,16 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
             link.click()
             URL.revokeObjectURL(pngUrl)
           }
-        })
-
-        URL.revokeObjectURL(url)
+        }, 'image/png', 1.0)
       }
 
-      img.src = url
+      img.onerror = () => {
+        console.error('Failed to load SVG image')
+        alert('Failed to export PNG. Try SVG export instead.')
+      }
+
+      // Use data URL instead of blob URL
+      img.src = dataUrl
     } catch (err) {
       console.error('PNG export error:', err)
       alert('Failed to export PNG. Try SVG export instead.')
@@ -337,14 +353,14 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
           
           {/* Download Buttons */}
           <div className="flex gap-2">
-            <button
+            {/* <button
               onClick={downloadSVG}
               disabled={isLoading || !!error}
               className="flex items-center px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
             >
               <Download className="h-4 w-4 mr-1" />
               SVG
-            </button>
+            </button> */}
             <button
               onClick={downloadPNG}
               disabled={isLoading || !!error}
