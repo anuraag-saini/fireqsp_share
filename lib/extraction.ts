@@ -1,9 +1,5 @@
-import OpenAI from 'openai'
 import { getPromptForDiseaseType, EXTRACTION_CONFIG, type DocumentPage, type Interaction } from './prompts'
-import { openAIKeyManager } from './openai-manager'
-
-// OpenAI clients will be created with rotating keys in each function
-
+import { callOpenAI } from './openai-shim'
 
 export interface ExtractionProgress {
   fileIndex: number
@@ -348,14 +344,7 @@ async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
   const { DISEASE_TYPE_PROMPT } = await import('./prompts')
   
   // Get dynamic model and rotating API key
-  const { model, apiKey } = await getOpenAIModel()
-  
-  // Create OpenAI client with specific key
-  const openai = new OpenAI({ 
-    apiKey,
-    timeout: 90 * 1000,
-    baseURL: 'https://api.openai.com/v1', // Explicit endpoint
-  })
+  const { model } = await getOpenAIModel()
   
   // console.log('🎨 Disease Detection OpenAI Call:')
   // console.log('Model:', model)
@@ -363,7 +352,7 @@ async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
   // console.log('Text length:', text.length)
   // console.log('First 200 chars:', text.substring(0, 200) + '...')
   
-  const response = await openai.chat.completions.create({
+  const response = await callOpenAI({
     model,
     messages: [
       {
@@ -376,7 +365,7 @@ async function callOpenAIForDiseaseType(text: string, pageNumbers: string) {
       }
     ],
     temperature: 0.1, // Low temperature for consistent results
-    max_tokens: 50    // Short response needed
+    // max_tokens: 50    // Short response needed
   })
   
   const result = response.choices[0]?.message?.content?.trim() || 'General'
@@ -389,30 +378,14 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
   const promptTemplate = getPromptForDiseaseType(diseaseType)
   
   // Get dynamic model and rotating API key
-  const { model, apiKey } = await getOpenAIModel()
-
-  // ADD THESE LOGS:
-  // console.log('🌐 ENVIRONMENT CHECK:')
-  // console.log('- Running on:', process.env.VERCEL ? 'Vercel' : 'Local')
-  // console.log('- Region:', process.env.VERCEL_REGION || 'local')
-  // console.log('- OpenAI API Key (first 10 chars):', apiKey.substring(0, 10))
-  // console.log('- Text length:', text.length)
-  // console.log('🚀 Starting OpenAI API call...')
-  
-  // Create OpenAI client with specific key
-  const openai = new OpenAI({ 
-    apiKey,  
-    timeout: 90 * 1000, // 60 second HTTP timeout
-    baseURL: 'https://api.openai.com/v1', // Explicit endpoint
-
-  })
+  const { model } = await getOpenAIModel()
   
   // console.log('=== OpenAI Extraction Debug ===')
   // console.log('Disease type:', diseaseType)
   // console.log('Using model:', model)
   // console.log('Text length:', text.length)
   
-  const response = await openai.chat.completions.create({
+  const response = await callOpenAI({
     model,
     messages: [
       {
@@ -425,7 +398,7 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
       }
     ],
     temperature: EXTRACTION_CONFIG.TEMPERATURE,
-    max_tokens: EXTRACTION_CONFIG.MAX_TOKENS
+    // max_tokens: EXTRACTION_CONFIG.MAX_TOKENS
   })
   
   const content = response.choices[0]?.message?.content
@@ -436,12 +409,41 @@ async function callOpenAIForExtraction(text: string, pageNumbers: string, diseas
     
     try {
       const parsed = JSON.parse(cleanedText)
-      // console.log(`✅ OpenAI returned ${parsed.interactions?.length || 0} interactions`)
+      console.log(`✅ OpenAI returned ${parsed.interactions?.length || 0} interactions`)
       
       return parsed
     } catch (parseError) {
       console.error('JSON parsing error:', parseError)
-      console.error('Failed to parse content:', cleanedText.substring(0, 200) + '...')
+      // console.error('Raw content length:', content.length)
+      // console.error('Cleaned content length:', cleanedText.length)
+      // console.error('Failed to parse content:', cleanedText.substring(0, 500) + '...')
+      
+      // Try to salvage partial JSON by adding closing braces
+      let salvageAttempt = cleanedText
+      if (cleanedText.includes('"interactions":[')) {
+        // Count open/close braces and brackets to try to fix
+        const openBraces = (cleanedText.match(/{/g) || []).length
+        const closeBraces = (cleanedText.match(/}/g) || []).length
+        const openBrackets = (cleanedText.match(/\[/g) || []).length
+        const closeBrackets = (cleanedText.match(/\]/g) || []).length
+        
+        // Add missing closing characters
+        for (let i = 0; i < openBrackets - closeBrackets; i++) {
+          salvageAttempt += ']'
+        }
+        for (let i = 0; i < openBraces - closeBraces; i++) {
+          salvageAttempt += '}'
+        }
+        
+        try {
+          const salvaged = JSON.parse(salvageAttempt)
+          // console.log(`🔧 Salvaged ${salvaged.interactions?.length || 0} interactions from broken JSON`)
+          return salvaged
+        } catch (salvageError) {
+          console.error('Salvage attempt also failed:', salvageError)
+        }
+      }
+      
       return { interactions: [] }
     }
   }
@@ -453,16 +455,9 @@ async function callOpenAIForReferences(text: string, pageNumbers: string) {
   const { REFERENCE_PROMPT } = await import('./prompts')
   
   // Get dynamic model and rotating API key
-  const { model, apiKey } = await getOpenAIModel()
+  const { model } = await getOpenAIModel()
   
-  // Create OpenAI client with specific key
-  const openai = new OpenAI({ 
-    apiKey,
-    timeout: 90 * 1000,
-    baseURL: 'https://api.openai.com/v1', // Explicit endpoint
-  })
-  
-  const response = await openai.chat.completions.create({
+  const response = await callOpenAI({
     model,
     messages: [
       {
@@ -481,7 +476,7 @@ async function callOpenAIForReferences(text: string, pageNumbers: string) {
 }
 
 // Helper function to get OpenAI model and rotating API key
-async function getOpenAIModel(): Promise<{ model: string, apiKey: string }> {
+async function getOpenAIModel(): Promise<{ model: string }> {
   try {
     const { createClient } = await import('@supabase/supabase-js')
     const supabase = createClient(
@@ -495,13 +490,11 @@ async function getOpenAIModel(): Promise<{ model: string, apiKey: string }> {
       .single()
     
     const model = data?.openai_model || 'gpt-4o-mini'
-    const apiKey = openAIKeyManager.getNextKey() // Get rotated key
     
-    // console.log(`🤖 Using OpenAI model: ${model}`)
-    return { model, apiKey }
+    return { model }
   } catch (error) {
     console.log('⚠️ Using default model due to error:', error)
-    return { model: 'gpt-4o-mini', apiKey: openAIKeyManager.getNextKey() }
+    return { model: 'gpt-4o-mini' }
   }
 }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createClerkClient } from '@clerk/nextjs/server'
 import { requireAuth } from '@/lib/auth'
+import { AVAILABLE_MODELS } from '@/lib/model-config';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,12 +35,7 @@ export async function GET() {
 
     return NextResponse.json({
       openai_model: settings?.openai_model || 'gpt-4o-mini',
-      available_models: [
-        'gpt-4o-mini',
-        'gpt-4o',
-        'gpt-4-turbo',
-        'gpt-3.5-turbo'
-      ]
+      available_models: AVAILABLE_MODELS
     })
 
   } catch (error) {
