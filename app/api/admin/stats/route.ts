@@ -14,14 +14,14 @@ export async function GET() {
     
     // Check authentication
     const user = await requireAuth()
-    console.log('Current user:', user?.emailAddresses[0]?.emailAddress)
+    // console.log('Current user:', user?.emailAddresses[0]?.emailAddress)
     
     if (!ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || '')) {
       console.log('❌ Unauthorized access attempt')
       return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 })
     }
 
-    console.log('✅ Admin access granted, using supabaseAdmin client')
+    console.log('✅ Admin access granted')
 
     // Test connection first
     const { data: testData, error: testError } = await supabaseAdmin
