@@ -54,7 +54,6 @@ async function checkAndFailStuckJobs() {
   }
 }
 
-// ONLY change this function in your current background-processor.ts file:
 async function updateExtractionTitleAndDisease(
   extractionId: string,
   interactions: any[],
@@ -63,52 +62,34 @@ async function updateExtractionTitleAndDisease(
   let diseaseType = 'General'
   let title = diseaseType
   
-  // console.log('🔍 Updating title and disease type...')
+  console.log('🔍 Updating title and disease type...')
   console.log(`Interactions available: ${interactions.length}, Pages available: ${allPages.length}`)
   
   try {
-    if (interactions.length > 0) {
-      // Method 1: Combine all reference texts to get better context
-      const combinedReferences = interactions
-        .map(int => int.reference_text || '')
-        .filter(text => text.length > 20) // Only substantial reference texts
-        .slice(0, 3) // Take first 3 substantial references
-        .join('\n\n')
+    // Use 2 pages approach instead of interactions
+    if (allPages.length > 0) {
+      console.log('📋 Using first 2 pages for disease detection')
       
-      // console.log('📋 Combined reference text for disease detection:')
-      // console.log(combinedReferences.substring(0, 500) + (combinedReferences.length > 500 ? '...' : ''))
-      // console.log(`📏 Total length: ${combinedReferences.length} characters`)
+      // Take first 2 pages from first file (like extraction.ts approach but limited to 2 pages)
+      const firstFilePages = allPages
+        .filter(page => page.metadata?.file_name === allPages[0]?.metadata?.file_name)
+        .slice(0, 2) // Take first 2 pages only
       
-      if (combinedReferences.length > 50) {
-        // Create a single "page" from combined reference texts
-        const referencePage = [{
-          page_content: combinedReferences,
-          metadata: { page: 1, file_name: interactions[0].filename || 'unknown' }
-        }]
+      if (firstFilePages.length > 0) {
+        console.log(`📄 Using ${firstFilePages.length} pages from file: ${firstFilePages[0]?.metadata?.file_name}`)
         
-        // console.log('🤖 Calling OpenAI for disease detection...')
-        const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(referencePage)
+        const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(firstFilePages)
         console.log(`🎯 OpenAI returned disease type: "${detectedType}"`)
         
         diseaseType = detectedType || 'General'
         title = diseaseType
         
-        console.log(`✨ Final disease detected from interactions: "${diseaseType}"`)
+        console.log(`✨ Final disease detected from pages: "${diseaseType}"`)
       } else {
-        console.log('⚠️ Combined reference text too short, skipping disease detection')
+        console.log('⚠️ No valid pages found for disease detection')
       }
-      
-    } else if (allPages.length > 0) {
-      // Fallback: use actual first page if no interactions
-      console.log('📋 Using first page for disease detection as fallback')
-      const firstPageContent = allPages[0]?.page_content?.substring(0, 200) + '...'
-      // console.log('First page content sample:', firstPageContent)
-      
-      const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(allPages.slice(0, 1))
-      diseaseType = detectedType || 'General'
-      title = diseaseType
-      
-      // console.log(`✨ Disease detected from pages: "${diseaseType}"`)
+    } else {
+      console.log('⚠️ No pages available for disease detection')
     }
     
   } catch (error) {
@@ -117,7 +98,7 @@ async function updateExtractionTitleAndDisease(
     title = diseaseType
   }
   
-  // Update the extraction record
+  // Update the extraction record (same as before)
   await supabase
     .from('extractions')
     .update({
