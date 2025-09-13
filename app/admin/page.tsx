@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation'
 import { AdminStats } from '@/components/AdminStats'
 import { AdminUsers } from '@/components/AdminUsers'
 import { AdminActivity } from '@/components/AdminActivity'
+import { HealthMonitor } from '@/components/admin/HealthMonitor'
+import { SystemStatusIndicator } from '@/components/admin/SystemStatusIndicator'
 import { Flame, TrendingUp, Users, Activity, Settings } from 'lucide-react'
 
 const ADMIN_EMAILS = [
@@ -28,6 +30,7 @@ export default function AdminPage() {
   const [grantPlan, setGrantPlan] = useState('pro')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [systemInfo, setSystemInfo] = useState<any>(null)
 
   useEffect(() => {
     if (isLoaded && (!user || !ADMIN_EMAILS.includes(user.emailAddresses[0]?.emailAddress || ''))) {
@@ -44,11 +47,20 @@ export default function AdminPage() {
 
   const loadSettings = async () => {
     try {
-      const response = await fetch('/api/admin/settings')
-      if (response.ok) {
-        const data = await response.json()
+      const [settingsResponse, healthResponse] = await Promise.all([
+        fetch('/api/admin/settings'),
+        fetch('/api/health')
+      ])
+      
+      if (settingsResponse.ok) {
+        const data = await settingsResponse.json()
         setOpenaiModel(data.openai_model || 'gpt-4o-mini')
         setAvailableModels(data.available_models || [])
+      }
+      
+      if (healthResponse.ok) {
+        const healthData = await healthResponse.json()
+        setSystemInfo(healthData.system)
       }
     } catch (error) {
       console.error('Failed to load settings:', error)
@@ -255,6 +267,9 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              {/* System Status */}
+              <SystemStatusIndicator />
+              
               <div className="text-right text-sm">
                 <p className="text-gray-900 font-medium">{user.firstName || 'Admin'}</p>
                 <p className="text-gray-500">{user.emailAddresses[0]?.emailAddress}</p>
@@ -295,6 +310,9 @@ export default function AdminPage() {
               <h2 className="text-2xl font-bold text-gray-900 mb-2">System Overview</h2>
               <p className="text-gray-600">Monitor your FireQSP platform performance and usage.</p>
             </div>
+            {/* Health Monitor */}
+            <HealthMonitor />
+            {/* Admin Stats */}
             <AdminStats />
           </div>
         )}
@@ -323,7 +341,7 @@ export default function AdminPage() {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">System Settings</h2>
-              <p className="text-gray-600">Configure system parameters and admin preferences.</p>
+              <p className="text-gray-600">Configure essential system parameters.</p>
             </div>
 
             {/* Status Message */}
@@ -333,15 +351,12 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* OpenAI Model Selection */}
+            {/* OpenAI Configuration */}
             <div className="bg-white rounded-lg border p-6">
-              <h3 className="text-lg font-semibold mb-4">OpenAI Configuration</h3>
+              <h3 className="text-lg font-semibold mb-4">OpenAI Model</h3>
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    OpenAI Model
-                  </label>
                   <select 
                     value={openaiModel}
                     onChange={(e) => setOpenaiModel(e.target.value)}
@@ -352,7 +367,7 @@ export default function AdminPage() {
                     ))}
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    Model used for all extractions. Changes apply to new extractions.
+                    Model used for all extractions
                   </p>
                 </div>
 
@@ -361,224 +376,91 @@ export default function AdminPage() {
                   disabled={loading}
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {loading ? 'Saving...' : 'Save Model Settings'}
+                  {loading ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </div>
 
-            {/*Add this right after the OpenAI Configuration card and before User Subscription Management */}
+            {/* User Access */}
+            <div className="bg-white rounded-lg border p-6">
+              <h3 className="text-lg font-semibold mb-4">Grant User Access</h3>
+              
+              <div className="flex gap-3">
+                <input
+                  type="email"
+                  placeholder="user@example.com"
+                  value={grantEmail}
+                  onChange={(e) => setGrantEmail(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 flex-1 max-w-sm"
+                />
+                <select 
+                  value={grantPlan}
+                  onChange={(e) => setGrantPlan(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="pro">Pro Plan</option>
+                  <option value="enterprise">Enterprise Plan</option>
+                </select>
+                <button 
+                  onClick={grantUserAccess}
+                  disabled={loading}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  {loading ? 'Granting...' : 'Grant'}
+                </button>
+              </div>
+            </div>
 
             {/* Job Management */}
             <div className="bg-white rounded-lg border p-6">
-              <h3 className="text-lg font-semibold mb-4">Job Management</h3>
+              <h3 className="text-lg font-semibold mb-4">Processing Jobs</h3>
               
-              <div className="space-y-4">
-                <div className="flex gap-3">
-                  <button 
-                    onClick={loadProcessingJobs}
-                    disabled={loading}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {loading ? 'Loading...' : 'Show Processing Jobs'}
-                  </button>
-                  
-                  <button 
-                    onClick={cleanupOldJobs}
-                    disabled={loading}
-                    className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
-                  >
-                    Kill Jobs 1+ Hours Old
-                  </button>
-                </div>
-
-                {processingJobs && processingJobs.length > 0 && (
-                  <div className="mt-6">
-                    <h4 className="font-medium mb-3">Currently Processing Jobs:</h4>
-                    <div className="space-y-2">
-                      {processingJobs.map((job: any) => {
-                        const startTime = new Date(job.created_at).toLocaleString()
-                        const duration = Math.round((Date.now() - new Date(job.created_at).getTime()) / 1000 / 60)
-                        
-                        return (
-                          <div key={job.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
-                            <div className="flex-1">
-                              <div className="text-sm font-mono text-gray-600">
-                                {job.id.slice(0, 8)}...
-                              </div>
-                              <div className="text-sm text-gray-700">
-                                Started: {startTime} ({duration}m ago)
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                Progress: {job.files_processed || 0}/{job.total_files || 0} files
-                                {job.current_file && ` • ${job.current_file}`}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => killSpecificJob(job.id)}
-                              disabled={loading}
-                              className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50"
-                            >
-                              Kill
-                            </button>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {processingJobs && processingJobs.length === 0 && (
-                  <div className="text-green-600 text-sm">
-                    ✅ No processing jobs found - system is healthy!
-                  </div>
-                )}
+              <div className="flex gap-3 mb-4">
+                <button 
+                  onClick={loadProcessingJobs}
+                  disabled={loading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? 'Loading...' : 'Show Active Jobs'}
+                </button>
+                
+                <button 
+                  onClick={cleanupOldJobs}
+                  disabled={loading}
+                  className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
+                >
+                  Kill Old Jobs
+                </button>
               </div>
-            </div>
 
-            {/* User Subscription Management */}
-            <div className="bg-white rounded-lg border p-6">
-              <h3 className="text-lg font-semibold mb-4">Subscription Management</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Grant Free Access
-                  </label>
-                  <div className="flex gap-3">
-                    <input
-                      type="email"
-                      placeholder="user@example.com"
-                      value={grantEmail}
-                      onChange={(e) => setGrantEmail(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 flex-1 max-w-sm"
-                    />
-                    <select 
-                      value={grantPlan}
-                      onChange={(e) => setGrantPlan(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="basic">Basic Plan</option>
-                      <option value="pro">Pro Plan</option>
-                      <option value="enterprise">Enterprise Plan</option>
-                    </select>
-                    <button 
-                      onClick={grantUserAccess}
-                      disabled={loading}
-                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {loading ? 'Granting...' : 'Grant Access'}
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Instantly grant free access to any user by email address. User must be registered in Clerk.
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Rest of existing settings... */}
-            <div className="bg-white rounded-lg border p-6">
-              <h3 className="text-lg font-semibold mb-4">Admin Configuration</h3>
-              
-              <div className="space-y-6">
-                {/* Admin Emails */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Admin Email Addresses
-                  </label>
-                  <div className="bg-gray-50 rounded-md p-3">
-                    <div className="space-y-1">
-                      {ADMIN_EMAILS.map((email, index) => (
-                        <div key={index} className="flex items-center justify-between text-sm">
-                          <span className="text-gray-900">{email}</span>
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            email === user.emailAddresses[0]?.emailAddress 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            {email === user.emailAddresses[0]?.emailAddress ? 'Current' : 'Admin'}
-                          </span>
+              {processingJobs && processingJobs.length > 0 && (
+                <div className="space-y-2">
+                  {processingJobs.map((job: any) => {
+                    const duration = Math.round((Date.now() - new Date(job.created_at).getTime()) / 1000 / 60)
+                    
+                    return (
+                      <div key={job.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
+                        <div>
+                          <div className="text-sm font-mono">{job.id.slice(0, 8)}...</div>
+                          <div className="text-xs text-gray-600">{duration}m ago • {job.files_processed || 0}/{job.total_files || 0} files</div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Only these email addresses can access the admin dashboard.
-                  </p>
+                        <button
+                          onClick={() => killSpecificJob(job.id)}
+                          className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                        >
+                          Kill
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
+              )}
 
-                {/* API Information */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    API Endpoints
-                  </label>
-                  <div className="bg-gray-50 rounded-md p-3">
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-700">/api/admin/stats</span>
-                        <span className="text-green-600 font-medium">Active</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-700">/api/admin/users</span>
-                        <span className="text-green-600 font-medium">Active</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-700">/api/admin/activity</span>
-                        <span className="text-green-600 font-medium">Active</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-700">/api/admin/settings</span>
-                        <span className="text-green-600 font-medium">Active</span>
-                      </div>
-                    </div>
-                  </div>
+              {processingJobs && processingJobs.length === 0 && (
+                <div className="text-green-600 text-sm">
+                  ✅ No active jobs
                 </div>
-
-                {/* System Info */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    System Information
-                  </label>
-                  <div className="bg-gray-50 rounded-md p-3">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-700">Platform:</span>
-                        <span className="ml-2 font-medium">FireQSP Admin v1.0</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-700">Database:</span>
-                        <span className="ml-2 font-medium text-green-600">Connected</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-700">Last Deploy:</span>
-                        <span className="ml-2 font-medium">{new Date().toLocaleDateString()}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-700">Auth Provider:</span>
-                        <span className="ml-2 font-medium">Clerk</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="pt-4 border-t">
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                    >
-                      Refresh Dashboard
-                    </button>
-                    <button
-                      onClick={() => router.push('/dashboard')}
-                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
-                    >
-                      Back to App
-                    </button>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         )}
