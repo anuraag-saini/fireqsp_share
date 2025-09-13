@@ -58,15 +58,15 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
     }
     
     // Apply diagram complexity limit for all users
-    if (result.length > 300) {
-      result = result.slice(0, 300)
+    if (result.length > 270) {
+      result = result.slice(0, 270)
     }
     
     return result
   }, [interactions, userLimits])
 
   // Check if we need to show complexity warning
-  const showComplexityWarning = interactions.length > 300 && (!userLimits?.plan || (userLimits.plan !== 'basic' && userLimits.plan !== 'expired'))
+  const showComplexityWarning = interactions.length > 270 && (!userLimits?.plan || (userLimits.plan !== 'basic' && userLimits.plan !== 'expired'))
 
   // Generate Mermaid code from interactions
   const generateMermaidCode = (interactions: Interaction[], showLabels: boolean): string => {
@@ -369,7 +369,7 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
             <div className="ml-3">
               <p className="text-sm text-blue-800">
                 <span className="font-medium">Too many interactions for diagram ({interactions.length} selected).</span>
-                {' '}Showing first 300 to prevent rendering issues.
+                {' '}Showing first 270 to prevent rendering issues.
               </p>
             </div>
           </div>

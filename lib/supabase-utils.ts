@@ -8,6 +8,7 @@ type ExtractionInsert = Database['public']['Tables']['extractions']['Insert']
 
 export class SupabaseExtraction {
   // Save interactions to separate table for better performance
+  // Save interactions to separate table for better performance
   static async saveInteractions(extractionId: string, interactions: Interaction[]): Promise<void> {
     if (interactions.length === 0) return
     
@@ -34,6 +35,18 @@ export class SupabaseExtraction {
     if (error) {
       console.error('Error saving interactions:', error)
       throw error
+    }
+    
+    // 🧹 SIMPLE DUPLICATE REMOVAL: Remove duplicates based on source_name + target_name pair
+    const { error: deleteError } = await supabaseAdmin.rpc('remove_duplicate_interactions', {
+      p_extraction_id: extractionId
+    })
+    
+    if (deleteError) {
+      console.error('Warning: Failed to remove duplicates:', deleteError)
+      // Don't throw - duplicates are not critical
+    } else {
+      console.log(`🧹 Removed duplicates for extraction ${extractionId}`)
     }
     
     console.log(`✅ Saved ${interactions.length} interactions to separate table`)
