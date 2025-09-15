@@ -373,7 +373,9 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-3xl flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-red-500" />
             <div className="text-red-700 text-sm font-medium flex-1">
-              {error}
+              {error === 'trial_expired' ? 'Your trial has ended. Please upgrade to continue.' :
+              error === 'monthly_limit_reached' ? 'Monthly limit reached. Please upgrade to continue.' :
+              error}
             </div>
             {/* Fixed: Added proper conditional rendering with parentheses and complete <a> tag */}
             {(error === 'trial_expired' || error === 'monthly_limit_reached' || error.includes('limit reached') || error.includes('upgrade your plan')) ? (
