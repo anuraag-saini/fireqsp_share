@@ -104,9 +104,13 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
   const handleExtraction = async () => {
     if (files.length === 0) return
 
-    // Validation (keep existing validation logic)
     if (!userLimits?.canUpload) {
-      setError('Extractions limit reached. Please upgrade your plan.')
+      // Show different message based on plan type
+      if (userLimits?.plan === 'expired' || userLimits?.plan === 'trial') {
+        setError('trial_expired') // Set a special error type
+      } else {
+        setError('monthly_limit_reached') // For basic plan monthly limits
+      }
       return
     }
 
@@ -368,18 +372,28 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
         {error && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-3xl flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-red-500" />
-            <div className="text-red-700 text-sm font-medium">
+            <div className="text-red-700 text-sm font-medium flex-1">
               {error}
             </div>
-            <button
-              onClick={() => {
-                setError(null)
-                setExtractionResults(null)
-              }}
-              className="ml-auto px-3 py-1 text-xs bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors duration-200"
-            >
-              Try Again
-            </button>
+            {/* Fixed: Added proper conditional rendering with parentheses and complete <a> tag */}
+            {(error.includes('limit reached') || error.includes('upgrade your plan')) ? (
+              <a
+                href="/pricing"
+                className="ml-auto px-3 py-1 text-xs bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors duration-200"
+              >
+                Upgrade now
+              </a>
+            ) : (
+              <button
+                onClick={() => {
+                  setError(null)
+                  setExtractionResults(null)
+                }}
+                className="ml-auto px-3 py-1 text-xs bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors duration-200"
+              >
+                Try Again
+              </button>
+            )}
           </div>
         )}
 
