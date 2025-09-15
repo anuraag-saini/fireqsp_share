@@ -426,7 +426,7 @@ export function DiagramViewer({ interactions }: DiagramViewerProps) {
               onClick={() => window.location.href = '/pricing'}
               className="ml-2 text-yellow-900 underline hover:no-underline"
             >
-              Upgrade to see all
+              Upgrade to Pro see all
             </button>
           </p>
         </div>

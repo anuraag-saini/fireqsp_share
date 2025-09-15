@@ -376,7 +376,7 @@ export function PDFUploader({ onExtractionComplete }: PDFUploaderProps) {
               {error}
             </div>
             {/* Fixed: Added proper conditional rendering with parentheses and complete <a> tag */}
-            {(error.includes('limit reached') || error.includes('upgrade your plan')) ? (
+            {(error === 'trial_expired' || error === 'monthly_limit_reached' || error.includes('limit reached') || error.includes('upgrade your plan')) ? (
               <a
                 href="/pricing"
                 className="ml-auto px-3 py-1 text-xs bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors duration-200"
