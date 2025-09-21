@@ -309,8 +309,8 @@ export function InteractionTable({ onSelectionChange }: InteractionTableProps) {
         <div className="text-gray-400 mb-4">
           <Filter className="h-12 w-12 mx-auto" />
         </div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">No Interactions Available</h3>
-        <p className="text-gray-600">Upload and extract PDFs to see interactions here</p>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">No Interactions Found</h3>
+        <p className="text-gray-600">The document was processed successfully, but no biological interactions were detected. Try uploading a different research paper.</p>
       </div>
     )
   }

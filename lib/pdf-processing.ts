@@ -23,20 +23,26 @@ export async function extractPagesFromPDF(file: File): Promise<DocumentPage[]> {
     
     const pages: DocumentPage[] = []
     let referencesSectionStarted = false
+    let referenceSectionIndex = -1
     
+    // First pass: identify where references section actually starts
     chunks.forEach((chunk: string, index: number) => {
-      const chunkLower = chunk.toLowerCase()
-      
-      // Check for references section
-      if (['references', 'bibliography', 'works cited'].some(keyword => 
-        chunkLower.includes(keyword)
-      )) {
+      if (!referencesSectionStarted && isReferencesSection(chunk)) {
         referencesSectionStarted = true
-        console.log(`Reference section found in ${file.name}`)
+        referenceSectionIndex = index
+        console.log(`Reference section found at chunk ${index + 1} in ${file.name}`)
       }
-      
-      // Only include chunks before references section
-      if (!referencesSectionStarted && chunk.trim().length > 100) {
+    })
+    
+    // If no clear references section found, use conservative approach
+    if (referenceSectionIndex === -1) {
+      console.log(`No clear references section found, including all chunks`)
+      referenceSectionIndex = chunks.length
+    }
+    
+    // Second pass: include only chunks before references section
+    chunks.forEach((chunk: string, index: number) => {
+      if (index < referenceSectionIndex && chunk.trim().length > 100) {
         pages.push({
           page_content: chunk.trim(),
           metadata: {
@@ -47,13 +53,13 @@ export async function extractPagesFromPDF(file: File): Promise<DocumentPage[]> {
       }
     })
     
-    console.log(`Filtered to ${pages.length} pages (excluding references)`)
+    console.log(`Filtered to ${pages.length} chunks (excluding references from chunk ${referenceSectionIndex + 1})`)
     
     if (pages.length === 0) {
       throw new Error('No text content could be extracted from PDF')
     }
 
-    console.log(`✅ PDF extraction completed: ${pages.length} pages`)
+    console.log(`✅ PDF extraction completed: ${pages.length} chunks`)
     return pages
     
   } catch (error) {
@@ -73,6 +79,52 @@ export async function extractPagesFromPDF(file: File): Promise<DocumentPage[]> {
   }
 }
 
+function isReferencesSection(chunk: string): boolean {
+  const chunkTrimmed = chunk.trim()
+  const firstLines = chunkTrimmed.split('\n').slice(0, 5).join('\n').toLowerCase()
+  
+  // Check if this chunk starts with a references header
+  const referenceHeaders = [
+    /^references\s*$/,
+    /^references\s*\n/,
+    /^\d+\.\s*references/,
+    /^bibliography\s*$/,
+    /^literature\s+cited\s*$/,
+    /^works\s+cited\s*$/
+  ]
+  
+  const hasReferenceHeader = referenceHeaders.some(pattern => 
+    pattern.test(firstLines)
+  )
+  
+  if (hasReferenceHeader) {
+    // Additional validation: check if chunk contains citation patterns
+    const citationPatterns = [
+      /\d{4}[.;,]\s+/g,           // Years followed by punctuation
+      /et\s+al[.;,]\s+/g,         // "et al" citations
+      /vol\.\s*\d+/g,             // Volume numbers
+      /pp\.\s*\d+/g,              // Page numbers
+      /doi:\s*10\./g,             // DOI patterns
+      /pmid:\s*\d+/g,             // PubMed IDs
+      /\[\d+\]/g,                 // Numbered references
+      /\(\d{4}\)/g                // Years in parentheses
+    ]
+    
+    const totalMatches = citationPatterns.reduce((count, pattern) => {
+      const matches = chunkTrimmed.match(pattern) || []
+      return count + matches.length
+    }, 0)
+    
+    const words = chunkTrimmed.split(/\s+/).length
+    const citationDensity = totalMatches / words
+    
+    // If header is present and citation density is high, it's likely references
+    return citationDensity > 0.05 // 5% of words are citation-like
+  }
+  
+  return false
+}
+
 function splitTextIntoChunks(text: string, chunkSize: number): string[] {
   if (!text || text.trim().length === 0) {
     return []
@@ -83,19 +135,23 @@ function splitTextIntoChunks(text: string, chunkSize: number): string[] {
     .replace(/\s+/g, ' ')           // Normalize whitespace
     .replace(/\f/g, ' ')           // Remove form feeds
     .replace(/\u00a0/g, ' ')       // Replace non-breaking spaces
+    .replace(/\u2028/g, '\n')      // Line separator
+    .replace(/\u2029/g, '\n')      // Paragraph separator
     .trim()
     
   const chunks: string[] = []
-  const sentences = text.split(/[.!?]+/)
+  
+  // Split by paragraphs first for better chunk boundaries
+  const paragraphs = cleanText.split(/\n\s*\n/)
   
   let currentChunk = ''
   
-  for (const sentence of sentences) {
-    if (currentChunk.length + sentence.length > chunkSize && currentChunk.length > 0) {
+  for (const paragraph of paragraphs) {
+    if (currentChunk.length + paragraph.length > chunkSize && currentChunk.length > 0) {
       chunks.push(currentChunk.trim())
-      currentChunk = sentence
+      currentChunk = paragraph + '\n\n'
     } else {
-      currentChunk += sentence + '. '
+      currentChunk += paragraph + '\n\n'
     }
   }
   
@@ -103,26 +159,70 @@ function splitTextIntoChunks(text: string, chunkSize: number): string[] {
     chunks.push(currentChunk.trim())
   }
   
-  return chunks
+  // If we still have very large chunks, split by sentences
+  const finalChunks: string[] = []
+  for (const chunk of chunks) {
+    if (chunk.length <= chunkSize) {
+      finalChunks.push(chunk)
+    } else {
+      const sentences = chunk.split(/[.!?]+/)
+      let currentSentenceChunk = ''
+      
+      for (const sentence of sentences) {
+        if (currentSentenceChunk.length + sentence.length > chunkSize && currentSentenceChunk.length > 0) {
+          finalChunks.push(currentSentenceChunk.trim())
+          currentSentenceChunk = sentence + '. '
+        } else {
+          currentSentenceChunk += sentence + '. '
+        }
+      }
+      
+      if (currentSentenceChunk.trim().length > 0) {
+        finalChunks.push(currentSentenceChunk.trim())
+      }
+    }
+  }
+  
+  return finalChunks.filter(chunk => chunk.length > 50) // Filter out very short chunks
 }
 
 export function filterReferencePages(pages: DocumentPage[]): DocumentPage[] {
   return pages.filter(page => {
     const content = page.page_content.toLowerCase()
-    const hasReferenceKeywords = ['references', 'bibliography', 'works cited', 'literature cited'].some(
-      keyword => content.includes(keyword)
+    
+    // More sophisticated reference detection
+    const referenceIndicators = [
+      /^references\s*$/m,
+      /^bibliography\s*$/m,
+      /^works\s+cited\s*$/m,
+      /^literature\s+cited\s*$/m
+    ]
+    
+    const hasReferenceHeader = referenceIndicators.some(pattern => 
+      pattern.test(content)
     )
     
-    // If page has reference keywords and is mostly citations, filter it out
-    if (hasReferenceKeywords) {
-      const citationPattern = /\d{4}[.;,]\s|et al[.;,]\s|vol\.\s*\d+|pp\.\s*\d+/gi
-      // const citationPattern = /\\d{4}[.;,]\\s|et al[.;,]\\s|vol\\.\\s*\\d+|pp\\.\\s*\\d+/gi
-                              
-      const citationMatches = content.match(citationPattern) || []
-      const citationDensity = citationMatches.length / content.split(' ').length
+    if (hasReferenceHeader) {
+      // Check citation density
+      const citationPatterns = [
+        /\d{4}[.;,]\s/g,
+        /et\s+al[.;,]\s/g,
+        /vol\.\s*\d+/g,
+        /pp\.\s*\d+/g,
+        /doi:\s*10\./g,
+        /\[\d+\]/g
+      ]
       
-      // If more than 10% of content looks like citations, filter out
-      return citationDensity < 0.1
+      const totalMatches = citationPatterns.reduce((count, pattern) => {
+        const matches = content.match(pattern) || []
+        return count + matches.length
+      }, 0)
+      
+      const words = content.split(/\s+/).length
+      const citationDensity = totalMatches / words
+      
+      // If more than 8% of content looks like citations, filter out
+      return citationDensity < 0.08
     }
     
     return true

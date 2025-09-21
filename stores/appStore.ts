@@ -74,7 +74,8 @@ export const useAppStore = create<AppState>()(
         set({
           interactions,
           references: data.references || {},
-          currentStep: interactions.length > 0 ? 'select' : 'upload'
+          currentStep: 'select'
+          // currentStep: interactions.length > 0 ? 'select' : 'upload'
         })
       },
       
