@@ -44,14 +44,14 @@ export default function Dashboard() {
             
             console.log('Extraction loaded:', {
               id: extraction.id,
-              interactionCount: extraction.interactions?.length,
+              interactionCount: extraction.interaction_count,
               title: extraction.title
             })
             
-            if (extraction.interactions && extraction.interactions.length > 0) {
+            if (extraction.interaction_count > 0) {
               console.log('Setting extraction results and switching to select step')
               setExtractionResults({
-                interactions: extraction.interactions,
+                interactions: extraction.interaction_count,
                 references: extraction.source_references || {}
               })
               setCurrentStep('select')

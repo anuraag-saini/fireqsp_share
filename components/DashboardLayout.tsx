@@ -301,7 +301,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                               <FileText className="h-3 w-3 mr-1" />
                               <span>{extraction.file_count} files</span>
                               <span className="mx-1">•</span>
-                              <span>{extraction.interaction_count} interactions</span>
+                              <span>{extraction.interaction_count || 0} interactions</span>
                             </div>
                             
                             <div className="mt-1 flex items-center text-xs text-gray-400">

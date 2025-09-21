@@ -1,8 +1,7 @@
-// lib/background-processor.ts
+// lib/background-processor.ts - Simplified with minimal logging
 import { extractPagesFromPDF } from './pdf-processing'
 import { extractInteractionsFromPages, extractReferencesFromPages, extractDiseaseTypeFromPages } from './extraction'
 import { SupabaseExtraction } from './supabase-utils'
-import { Interaction } from './prompts'
 import { incrementUserExtraction } from './usage-tracking'
 import { JobManager } from './job-manager'
 import { FileStorage } from './file-storage'
@@ -13,37 +12,49 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Add this function at the top of the file, after imports
+class JobCancelledException extends Error {
+  constructor(jobId: string) {
+    super(`Job ${jobId} was cancelled`)
+    this.name = 'JobCancelledException'
+  }
+}
+
+async function checkJobStatus(jobId: string): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from('extraction_jobs')
+      .select('status')
+      .eq('id', jobId)
+      .single()
+    
+    return ['processing', 'queued'].includes(data?.status)
+  } catch (error) {
+    return false
+  }
+}
+
 async function checkAndFailStuckJobs() {
   try {
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
     
-    // Find stuck jobs
     const { data: stuckJobs } = await supabase
       .from('extraction_jobs')
       .select('id')
       .eq('status', 'processing')
       .lt('created_at', twoHoursAgo)
-    
+
     if (stuckJobs && stuckJobs.length > 0) {
-      console.log(`⏰ Found ${stuckJobs.length} stuck jobs, marking as failed`)
-      
-      // Mark jobs as failed
       for (const job of stuckJobs) {
         await supabase
           .from('extraction_jobs')
-          .update({
-            status: 'failed',
-            completed_at: new Date().toISOString()
-          })
+          .update({ status: 'failed', completed_at: new Date().toISOString() })
           .eq('id', job.id)
         
-        // Also mark extractions as failed
         await supabase
           .from('extractions')
-          .update({
-            status: 'failed',
-            errors: ['Job timeout after 2 hours - system hang detected'],
+          .update({ 
+            status: 'failed', 
+            errors: ['Job timeout after 2 hours'],
             updated_at: new Date().toISOString()
           })
           .eq('job_id', job.id)
@@ -54,51 +65,61 @@ async function checkAndFailStuckJobs() {
   }
 }
 
+async function detectDiseaseTypeEarly(allPages: any[], jobId: string): Promise<string> {
+  if (allPages.length === 0) return 'General'
+  
+  if (!await checkJobStatus(jobId)) {
+    throw new JobCancelledException(jobId)
+  }
+  
+  try {
+    const firstFilePages = allPages
+      .filter(page => page.metadata?.file_name === allPages[0]?.metadata?.file_name)
+      .slice(0, 3)
+    
+    if (firstFilePages.length === 0) return 'General'
+    
+    const { diseaseType } = await extractDiseaseTypeFromPages(firstFilePages)
+    return diseaseType || 'General'
+    
+  } catch (error) {
+    if (error instanceof JobCancelledException) throw error
+    return 'General'
+  }
+}
+
 async function updateExtractionTitleAndDisease(
   extractionId: string,
   interactions: any[],
-  allPages: any[] = []
+  allPages: any[] = [],
+  preDetectedDisease?: string,
+  jobId?: string
 ): Promise<{ diseaseType: string, title: string }> {
-  let diseaseType = 'General'
+  let diseaseType = preDetectedDisease || 'General'
   let title = diseaseType
   
-  console.log('🔍 Updating title and disease type...')
-  console.log(`Interactions available: ${interactions.length}, Pages available: ${allPages.length}`)
-  
-  try {
-    // Use 2 pages approach instead of interactions
-    if (allPages.length > 0) {
-      console.log('📋 Using first 2 pages for disease detection')
-      
-      // Take first 2 pages from first file (like extraction.ts approach but limited to 2 pages)
-      const firstFilePages = allPages
-        .filter(page => page.metadata?.file_name === allPages[0]?.metadata?.file_name)
-        .slice(0, 2) // Take first 2 pages only
-      
-      if (firstFilePages.length > 0) {
-        console.log(`📄 Using ${firstFilePages.length} pages from file: ${firstFilePages[0]?.metadata?.file_name}`)
-        
-        const { diseaseType: detectedType } = await extractDiseaseTypeFromPages(firstFilePages)
-        console.log(`🎯 OpenAI returned disease type: "${detectedType}"`)
-        
-        diseaseType = detectedType || 'General'
-        title = diseaseType
-        
-        console.log(`✨ Final disease detected from pages: "${diseaseType}"`)
-      } else {
-        console.log('⚠️ No valid pages found for disease detection')
-      }
-    } else {
-      console.log('⚠️ No pages available for disease detection')
-    }
-    
-  } catch (error) {
-    console.error('❌ Disease type detection failed:', error)
-    diseaseType = 'General'
-    title = diseaseType
+  if (jobId && !await checkJobStatus(jobId)) {
+    throw new JobCancelledException(jobId)
   }
   
-  // Update the extraction record (same as before)
+  if (!preDetectedDisease && allPages.length > 0) {
+    try {
+      const firstFilePages = allPages
+        .filter(page => page.metadata?.file_name === allPages[0]?.metadata?.file_name)
+        .slice(0, 2)
+      
+      if (firstFilePages.length > 0) {
+        const result = await extractDiseaseTypeFromPages(firstFilePages)
+        diseaseType = result.diseaseType || 'General'
+        title = diseaseType
+      }
+    } catch (error) {
+      if (error instanceof JobCancelledException) throw error
+      diseaseType = 'General'
+      title = diseaseType
+    }
+  }
+  
   await supabase
     .from('extractions')
     .update({
@@ -107,8 +128,6 @@ async function updateExtractionTitleAndDisease(
       updated_at: new Date().toISOString()
     })
     .eq('id', extractionId)
-  
-  console.log(`✅ Updated extraction ${extractionId}: title="${title}", diseaseType="${diseaseType}"`)
   
   return { diseaseType, title }
 }
@@ -120,33 +139,31 @@ export class BackgroundProcessor {
     userEmail: string,
     fileCount: number
   ): Promise<{ success: boolean; error?: string }> {
-    console.log("🚀 BACKGROUND PROCESSOR STARTED", { jobId, userId })    
+    console.log(`🚀 Processing job ${jobId}`)
     
     let extraction: any = null
+    let detectedDiseaseType: string = 'General'
     
     try {
       await checkAndFailStuckJobs()
-      // console.log(`Starting background processing for job: ${jobId}`)
       
-      // Update job status to processing
+      if (!await checkJobStatus(jobId)) {
+        return { success: false, error: 'Job was cancelled' }
+      }
+      
       await JobManager.updateJobProgress(jobId, {
         status: 'processing',
         current_file: 'Initializing...'
       })
       
-      // Get file list from storage
-      // console.log("🔹 Listing files from storage")
       const { data: fileList } = await supabase.storage
         .from('extraction-files')
         .list(`${userId}/${jobId}`)
       
-      if (!fileList || fileList.length === 0) {
+      if (!fileList?.length) {
         throw new Error('No files found for processing')
       }
       
-      // console.log(`Found ${fileList.length} files to process`)
-      
-      // Create extraction record (interactions go to separate table)
       extraction = await SupabaseExtraction.createExtraction({
         user_id: userId,
         title: 'Processing...',
@@ -159,209 +176,166 @@ export class BackgroundProcessor {
         disease_type: 'General'
       })
       
-      // Link extraction to job using direct supabase call
       if (extraction?.id) {
-        // console.log(`✅ Created extraction record: ${extraction.id}`)
-        // Update job with extraction_id
         await JobManager.updateJobProgress(jobId, {
           extraction_id: extraction.id
         })
-        // console.log(`🔗 Linked job ${jobId} to extraction ${extraction.id}`)
       }
       
-      // Process files individually with batch logic to avoid timeouts
-      // console.log('🔥 Processing files individually with timeout protection')
-      
-      const BATCH_SIZE = 1 // Process 1 file at a time for maximum reliability
       const allInteractions: any[] = []
       const allReferences: Record<string, string> = {}
       const allErrors: string[] = []
-      const allPages: any[] = [] // Keep track of all pages for disease detection
+      const allPages: any[] = []
       let filesSuccessful = 0
-      let filesProcessed = 0
       let filesFailed = 0
+      let diseaseDetected = false
 
-      // Process files in batches
-      for (let startIndex = 0; startIndex < fileList.length; startIndex += BATCH_SIZE) {
-        const endIndex = Math.min(startIndex + BATCH_SIZE, fileList.length)
-        // console.log(`📦 Processing batch ${startIndex + 1}-${endIndex} of ${fileList.length} files`)
-        
-        const batchPages: any[] = []
-        
-        // Process files in current batch
-        for (let fileIndex = startIndex; fileIndex < endIndex; fileIndex++) {
-          const fileInfo = fileList[fileIndex]
-          const fileName = fileInfo.name
-          
-          try {
-            console.log(`📄 Processing file: ${fileName}`)
-            
-            // Update current file status
-            await JobManager.updateJobProgress(jobId, {
-              current_file: fileName,
-              files_processed: fileIndex
-            })
-            
-            // Download file from storage
-            const filePath = `${userId}/${jobId}/${fileName}`
-            const fileBuffer = await FileStorage.downloadFile(filePath)
-            
-            if (!fileBuffer) {
-              throw new Error('Failed to download file')
-            }
-            
-            // Convert ArrayBuffer to File-like object for processing
-
-            // Create a File-like object that works in Node.js
-            // const fileBlob = new Blob([fileBuffer], { type: 'application/pdf' })
-            // const file = Object.assign(fileBlob, {
-            //   name: fileName,
-            //   lastModified: Date.now(),
-            //   webkitRelativePath: '',
-            //   size: fileBuffer.byteLength,
-            //   type: 'application/pdf'
-            // })
-
-            // Create File-like object compatible with Node.js
-            const file = {
-              name: fileName,
-              size: fileBuffer.byteLength,
-              type: 'application/pdf',
-              lastModified: Date.now(),
-              stream: () => new ReadableStream({
-                start(controller) {
-                  controller.enqueue(new Uint8Array(fileBuffer))
-                  controller.close()
-                }
-              }),
-              arrayBuffer: () => Promise.resolve(fileBuffer.slice()),
-              slice: (start = 0, end = fileBuffer.byteLength) => 
-                new Blob([fileBuffer.slice(start, end)], { type: 'application/pdf' }),
-              text: () => Promise.resolve(''),
-              webkitRelativePath: ''
-            } as File
-            
-            // Process PDF using existing logic
-            const pages = await extractPagesFromPDF(file)
-            
-            // Add filename to each page for tracking
-            const pagesWithFilename = pages.map(page => ({
-              ...page,
-              metadata: {
-                ...page.metadata,
-                file_name: fileName
-              }
-            }))
-            
-            batchPages.push(...pagesWithFilename)
-            allPages.push(...pagesWithFilename) // Keep for disease detection
-            // console.log(`✅ Successfully processed ${fileName}: ${pages.length} pages`)
-            
-            // Delete file after successful processing
-            await FileStorage.deleteFile(filePath)
-            filesSuccessful++
-            
-          } catch (error) {
-            const errorMessage = `Failed to process ${fileName}: ${error instanceof Error ? error.message : error}`
-            console.error(errorMessage)
-            allErrors.push(errorMessage)
-            filesFailed++
-            
-            // Delete failed file too
-            const filePath = `${userId}/${jobId}/${fileName}`
-            await FileStorage.deleteFile(filePath)
-          }
-          
-          filesProcessed++
+      for (let fileIndex = 0; fileIndex < fileList.length; fileIndex++) {
+        if (!await checkJobStatus(jobId)) {
+          throw new JobCancelledException(jobId)
         }
         
-        // Process AI extraction for this batch
-        if (batchPages.length > 0) {
-          // console.log(`🧠 Processing ${batchPages.length} pages with AI for batch ${startIndex + 1}-${endIndex}`)
+        const fileInfo = fileList[fileIndex]
+        const fileName = fileInfo.name
+        
+        try {
+          await JobManager.updateJobProgress(jobId, {
+            current_file: fileName,
+            files_processed: fileIndex
+          })
           
-          try {
-            // Extract interactions using existing logic with timeout handling
-            const { interactions, errors: interactionErrors, stats: interactionStats } = await extractInteractionsFromPages(
-              batchPages,
-              'General' // We'll detect disease type later from all interactions
-            )
+          const filePath = `${userId}/${jobId}/${fileName}`
+          const fileBuffer = await FileStorage.downloadFile(filePath)
+          
+          if (!fileBuffer) {
+            throw new Error('Failed to download file')
+          }
 
-            // console.log(`📊 Batch stats: ${interactionStats.successfulBatches}/${interactionStats.totalBatches} successful, ${interactionStats.timeoutBatches} timeouts`)
-
-            // Extract references using existing logic with timeout handling
-            const { references, errors: referenceErrors } = await extractReferencesFromPages(batchPages)
+          const file = {
+            name: fileName,
+            size: fileBuffer.byteLength,
+            type: 'application/pdf',
+            lastModified: Date.now(),
+            stream: () => new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array(fileBuffer))
+                controller.close()
+              }
+            }),
+            arrayBuffer: () => Promise.resolve(fileBuffer.slice()),
+            slice: (start = 0, end = fileBuffer.byteLength) => 
+              new Blob([fileBuffer.slice(start, end)], { type: 'application/pdf' }),
+            text: () => Promise.resolve(''),
+            webkitRelativePath: ''
+          } as File
+          
+          const pages = await extractPagesFromPDF(file)
+          
+          const pagesWithFilename = pages.map(page => ({
+            ...page,
+            metadata: {
+              ...page.metadata,
+              file_name: fileName
+            }
+          }))
+          
+          allPages.push(...pagesWithFilename)
+          
+          // Detect disease type early
+          if (!diseaseDetected && allPages.length >= 3) {
+            detectedDiseaseType = await detectDiseaseTypeEarly(allPages, jobId)
+            diseaseDetected = true
             
-            // Accumulate results
-            allInteractions.push(...interactions)
-            Object.assign(allReferences, references)
-            allErrors.push(...interactionErrors, ...referenceErrors)
-            
-            // console.log(`✅ Found ${interactions.length} interactions in batch ${startIndex + 1}-${endIndex}`)
-            
-            // Update progress after each batch
-            await JobManager.updateJobProgress(jobId, {
-              files_successful: filesSuccessful,
-              files_processed: filesProcessed,
-              interactions_found: allInteractions.length
-            })
-            
-            // Update extraction with accumulated results after each batch using NEW method
             await supabase
               .from('extractions')
               .update({
-                source_references: allReferences,
-                errors: allErrors,
-                interaction_count: allInteractions.length,
+                disease_type: detectedDiseaseType,
+                title: detectedDiseaseType,
                 updated_at: new Date().toISOString()
               })
               .eq('id', extraction.id)
-            
-            // Save interactions to separate table for better performance
-            if (interactions.length > 0) {
-              await SupabaseExtraction.saveInteractions(extraction.id, interactions)
-              // console.log(`✅ Saved ${interactions.length} interactions to separate table`)
-            }
-              
-            // Update title and disease type after each successful batch
-            await updateExtractionTitleAndDisease(extraction.id, allInteractions, allPages)
-              
-          } catch (aiError) {
-            console.error(`AI processing failed for batch ${startIndex + 1}-${endIndex}:`, aiError)
-            allErrors.push(`AI processing failed for batch ${startIndex + 1}-${endIndex}: ${aiError}`)
           }
-        }
-        
-        // Small delay between batches to avoid overwhelming the system
-        if (endIndex < fileList.length) {
-          // console.log(`⏳ Waiting 1 second before next batch...`)
-          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          await FileStorage.deleteFile(filePath)
+          filesSuccessful++
+          
+        } catch (error) {
+          if (error instanceof JobCancelledException) throw error
+          
+          allErrors.push(`Failed to process ${fileName}: ${error}`)
+          filesFailed++
+          
+          const filePath = `${userId}/${jobId}/${fileName}`
+          await FileStorage.deleteFile(filePath)
         }
       }
       
-      // console.log(`🎯 All ${fileList.length} files processed, finalizing`)
-      
-      // Determine final status based on success/failure ratio
-      let finalStatus: 'completed' | 'partial' | 'failed' = 'failed'
-      
-      if (filesSuccessful === fileList.length) {
-        finalStatus = 'completed'
-        // console.log('✅ All files processed successfully - status: completed')
-      } else if (filesSuccessful > 0) {
-        finalStatus = 'partial'
-        // console.log(`⚠️ ${filesSuccessful}/${fileList.length} files processed successfully - status: partial`)
-      } else {
-        finalStatus = 'failed'
-        // console.log('❌ No files processed successfully - status: failed')
+      // Process AI extraction
+      if (allPages.length > 0) {
+        try {
+          if (!await checkJobStatus(jobId)) {
+            throw new JobCancelledException(jobId)
+          }
+          
+          const { interactions, errors: interactionErrors } = await extractInteractionsFromPages(
+            allPages,
+            detectedDiseaseType,
+            async (progress) => {
+              // Update job progress in real-time
+              await JobManager.updateJobProgress(jobId, {
+                current_file: `Processing ${progress.fileName} (${progress.fileIndex + 1}/${progress.totalFiles})`
+              })
+            },
+            jobId
+          )
+
+          const { references, errors: referenceErrors } = await extractReferencesFromPages(
+            allPages,
+            jobId
+          )
+          
+          allInteractions.push(...interactions)
+          Object.assign(allReferences, references)
+          allErrors.push(...interactionErrors, ...referenceErrors)
+          
+          // Update progress
+          await JobManager.updateJobProgress(jobId, {
+            files_successful: filesSuccessful,
+            files_processed: fileList.length,
+            interactions_found: allInteractions.length
+          })
+          
+          await supabase
+            .from('extractions')
+            .update({
+              source_references: allReferences,
+              errors: allErrors,
+              interaction_count: allInteractions.length,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', extraction.id)
+          
+          if (interactions.length > 0) {
+            await SupabaseExtraction.saveInteractions(extraction.id, interactions)
+          }
+            
+        } catch (aiError) {
+          if (aiError instanceof JobCancelledException) throw aiError
+          allErrors.push(`AI processing failed: ${aiError}`)
+        }
       }
       
-      // Final extraction update - ensure title and disease type are set
+      const finalStatus = filesSuccessful === fileList.length ? 'completed' : 
+                         filesSuccessful > 0 ? 'partial' : 'failed'
+      
       const { diseaseType, title } = await updateExtractionTitleAndDisease(
         extraction.id, 
         allInteractions, 
-        allPages
+        allPages,
+        detectedDiseaseType,
+        jobId
       )
       
-      // Update final status
       await supabase
         .from('extractions')
         .update({
@@ -371,7 +345,6 @@ export class BackgroundProcessor {
         })
         .eq('id', extraction.id)
       
-      // Complete the job
       await JobManager.updateJobProgress(jobId, {
         status: finalStatus,
         interactions_found: allInteractions.length,
@@ -380,33 +353,57 @@ export class BackgroundProcessor {
         current_file: undefined
       })
       
-      // Track usage only if we got some results
       if (finalStatus !== 'failed') {
         try {
           await incrementUserExtraction(userId)
         } catch (error) {
-          console.error('Failed to track usage:', error)
+          // Silent fail on usage tracking
         }
       }
       
-      console.log(`✅ Background processing completed: status=${finalStatus}, interactions=${allInteractions.length}, title="${title}"`)
+      console.log(`✅ Job ${jobId} completed: ${finalStatus}, ${allInteractions.length} interactions, disease: ${diseaseType}`)
       
       return { success: true }
       
     } catch (error) {
-      console.error('Background processing error:', error)
+      if (error instanceof JobCancelledException) {
+        console.log(`🛑 Job ${jobId} cancelled`)
+        
+        await JobManager.updateJobProgress(jobId, {
+          status: 'failed',
+          current_file: undefined
+        })
+        
+        if (extraction?.id) {
+          await supabase
+            .from('extractions')
+            .update({
+              status: 'failed',
+              errors: ['Job was cancelled'],
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', extraction.id)
+        }
+        
+        try {
+          await FileStorage.deleteJobFiles(userId, jobId)
+        } catch (cleanupError) {
+          // Silent fail on cleanup
+        }
+        
+        return { success: false, error: 'Job was cancelled' }
+      }
       
-      // Update job status to failed
+      console.error(`❌ Job ${jobId} failed:`, error)
+      
       await JobManager.updateJobProgress(jobId, {
         status: 'failed',
         current_file: undefined
       })
       
-      // Update extraction status if we have one using direct supabase call
       if (extraction?.id) {
         try {
-          // Even if processing failed, try to update title if we have any data
-          await updateExtractionTitleAndDisease(extraction.id, [], [])
+          await updateExtractionTitleAndDisease(extraction.id, [], [], detectedDiseaseType, jobId)
           
           await supabase
             .from('extractions')
@@ -417,20 +414,19 @@ export class BackgroundProcessor {
             })
             .eq('id', extraction.id)
         } catch (updateError) {
-          console.error('Failed to update extraction status:', updateError)
+          // Silent fail on cleanup
         }
       }
       
-      // Clean up any remaining files
       try {
         await FileStorage.deleteJobFiles(userId, jobId)
       } catch (cleanupError) {
-        console.error('Failed to cleanup files:', cleanupError)
+        // Silent fail on cleanup
       }
       
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Background processing failed'
+        error: error instanceof Error ? error.message : 'Processing failed'
       }
     }
   }
