@@ -1,12 +1,10 @@
-// components/layout/Header.tsx
+// components/layout/Header.tsx - No Auth Version
 'use client'
 
 import Link from 'next/link'
-import { useUser, UserButton } from '@clerk/nextjs'
 import { useState } from 'react'
 
 export function Header() {
-  const { isSignedIn } = useUser()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const navigation = [
@@ -17,24 +15,52 @@ export function Header() {
   ]
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-      <nav className="container-custom">
-        <div className="flex items-center justify-between h-16">
+    <header style={{
+      backgroundColor: 'white',
+      borderBottom: '1px solid #E5E7EB',
+      position: 'sticky',
+      top: 0,
+      zIndex: 50
+    }}>
+      <nav style={{ maxWidth: '80rem', margin: '0 auto', padding: '0 1rem' }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          height: '4rem' 
+        }}>
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">S</span>
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
+            <div style={{
+              width: '2rem',
+              height: '2rem',
+              background: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
+              borderRadius: '0.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <span style={{ color: 'white', fontWeight: 'bold', fontSize: '1.25rem' }}>S</span>
             </div>
-            <span className="text-xl font-bold text-gray-900">SaaS Starter</span>
+            <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#111827' }}>SaaS Starter</span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8">
+          <div style={{ 
+            display: 'none', 
+            gap: '2rem',
+            '@media (min-width: 768px)': { display: 'flex' }
+          }} className="desktop-nav">
             {navigation.map((item) => (
               <Link
                 key={item.name}
                 href={item.href}
-                className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
+                style={{
+                  color: '#4B5563',
+                  fontWeight: 500,
+                  textDecoration: 'none',
+                  transition: 'color 0.2s'
+                }}
               >
                 {item.name}
               </Link>
@@ -42,41 +68,49 @@ export function Header() {
           </div>
 
           {/* Auth Buttons */}
-          <div className="hidden md:flex items-center gap-4">
-            {isSignedIn ? (
-              <>
-                <Link
-                  href="/dashboard"
-                  className="text-gray-600 hover:text-gray-900 font-medium"
-                >
-                  Dashboard
-                </Link>
-                <UserButton afterSignOutUrl="/" />
-              </>
-            ) : (
-              <>
-                <Link
-                  href="/sign-in"
-                  className="text-gray-600 hover:text-gray-900 font-medium"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  href="/sign-up"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                >
-                  Get Started
-                </Link>
-              </>
-            )}
+          <div style={{ 
+            display: 'none', 
+            gap: '1rem',
+            alignItems: 'center'
+          }} className="desktop-nav">
+            <Link
+              href="/sign-in"
+              style={{
+                color: '#4B5563',
+                fontWeight: 500,
+                textDecoration: 'none'
+              }}
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/sign-up"
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#3B82F6',
+                color: 'white',
+                borderRadius: '0.5rem',
+                fontWeight: 500,
+                textDecoration: 'none',
+                transition: 'background-color 0.2s'
+              }}
+            >
+              Get Started
+            </Link>
           </div>
 
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2"
+            style={{
+              padding: '0.5rem',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer'
+            }}
+            className="mobile-menu-btn"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg style={{ width: '1.5rem', height: '1.5rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               {mobileMenuOpen ? (
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               ) : (
@@ -88,45 +122,68 @@ export function Header() {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 border-t border-gray-200">
+          <div style={{ paddingBottom: '1rem', borderTop: '1px solid #E5E7EB' }}>
             {navigation.map((item) => (
               <Link
                 key={item.name}
                 href={item.href}
-                className="block py-2 text-gray-600 hover:text-gray-900 font-medium"
+                style={{
+                  display: 'block',
+                  paddingTop: '0.5rem',
+                  paddingBottom: '0.5rem',
+                  color: '#4B5563',
+                  fontWeight: 500,
+                  textDecoration: 'none'
+                }}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 {item.name}
               </Link>
             ))}
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              {isSignedIn ? (
-                <Link
-                  href="/dashboard"
-                  className="block py-2 text-gray-600 hover:text-gray-900 font-medium"
-                >
-                  Dashboard
-                </Link>
-              ) : (
-                <>
-                  <Link
-                    href="/sign-in"
-                    className="block py-2 text-gray-600 hover:text-gray-900 font-medium"
-                  >
-                    Sign In
-                  </Link>
-                  <Link
-                    href="/sign-up"
-                    className="block mt-2 py-2 px-4 bg-blue-600 text-white rounded-lg font-medium text-center"
-                  >
-                    Get Started
-                  </Link>
-                </>
-              )}
+            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #E5E7EB' }}>
+              <Link
+                href="/sign-in"
+                style={{
+                  display: 'block',
+                  paddingTop: '0.5rem',
+                  paddingBottom: '0.5rem',
+                  color: '#4B5563',
+                  fontWeight: 500,
+                  textDecoration: 'none'
+                }}
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/sign-up"
+                style={{
+                  display: 'block',
+                  marginTop: '0.5rem',
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#3B82F6',
+                  color: 'white',
+                  borderRadius: '0.5rem',
+                  fontWeight: 500,
+                  textAlign: 'center',
+                  textDecoration: 'none'
+                }}
+              >
+                Get Started
+              </Link>
             </div>
           </div>
         )}
       </nav>
+      <style jsx>{`
+        @media (min-width: 768px) {
+          .desktop-nav {
+            display: flex !important;
+          }
+          .mobile-menu-btn {
+            display: none !important;
+          }
+        }
+      `}</style>
     </header>
   )
 }

@@ -1,15 +1,11 @@
-// app/pricing/page.tsx
+// app/pricing/page.tsx - No Auth Version
 'use client'
 
 import { useState } from 'react'
-import { useUser } from '@clerk/nextjs'
-import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 
 export default function PricingPage() {
-  const { isSignedIn } = useUser()
-  const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
 
   const plans = [
@@ -62,98 +58,75 @@ export default function PricingPage() {
     },
   ]
 
-  const handleSubscribe = async (planType: string) => {
-    if (!isSignedIn) {
-      router.push('/sign-up')
-      return
-    }
-
-    if (planType === 'free') {
-      router.push('/dashboard')
-      return
-    }
-
-    if (planType === 'enterprise') {
-      window.location.href = 'mailto:sales@example.com'
-      return
-    }
-
-    setLoading(planType)
-    
-    try {
-      const response = await fetch('/api/stripe/create-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          planType,
-          successUrl: `${window.location.origin}/dashboard?success=true`,
-          cancelUrl: `${window.location.origin}/pricing?canceled=true`,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (data.url) {
-        window.location.href = data.url
-      }
-    } catch (error) {
-      console.error('Error:', error)
-      alert('Something went wrong. Please try again.')
-    } finally {
-      setLoading(null)
-    }
+  const handleSubscribe = (planType: string) => {
+    alert(`Demo Mode: In production, this would redirect to Stripe checkout for the ${planType} plan. Add real Stripe keys to enable payments.`)
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Header />
       
-      <main className="flex-1">
+      <main style={{ flex: 1 }}>
         {/* Header Section */}
-        <section className="section bg-gradient-primary text-white">
-          <div className="container-custom text-center">
-            <h1 className="text-5xl font-bold mb-6">
+        <section className="section gradient-primary" style={{ color: 'white' }}>
+          <div className="container-custom" style={{ textAlign: 'center' }}>
+            <h1 style={{ fontSize: '3rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>
               Simple, Transparent Pricing
             </h1>
-            <p className="text-xl text-blue-100 max-w-2xl mx-auto">
+            <p style={{ fontSize: '1.25rem', maxWidth: '42rem', margin: '0 auto', opacity: 0.9 }}>
               Choose the perfect plan for your needs. Always know what you'll pay.
             </p>
           </div>
         </section>
 
         {/* Pricing Cards */}
-        <section className="section bg-white">
+        <section className="section" style={{ backgroundColor: 'white' }}>
           <div className="container-custom">
-            <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '2rem',
+              maxWidth: '75rem',
+              margin: '0 auto'
+            }}>
               {plans.map((plan) => (
                 <div
                   key={plan.planType}
-                  className={`card relative ${
-                    plan.highlighted
-                      ? 'ring-2 ring-blue-500 shadow-2xl scale-105'
-                      : ''
-                  }`}
+                  className={plan.highlighted ? 'card' : 'card'}
+                  style={{
+                    position: 'relative',
+                    ...(plan.highlighted ? {
+                      boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                      transform: 'scale(1.05)',
+                      border: '2px solid #3B82F6'
+                    } : {})
+                  }}
                 >
                   {plan.highlighted && (
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                      <span className="badge-primary px-4 py-1">Most Popular</span>
+                    <div style={{
+                      position: 'absolute',
+                      top: '-1rem',
+                      left: '50%',
+                      transform: 'translateX(-50%)'
+                    }}>
+                      <span className="badge-primary" style={{ padding: '0.25rem 1rem' }}>Most Popular</span>
                     </div>
                   )}
                   
-                  <div className="text-center mb-6">
-                    <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
-                    <p className="text-gray-600 mb-4">{plan.description}</p>
-                    <div className="flex items-baseline justify-center gap-2">
-                      <span className="text-5xl font-bold">${plan.price}</span>
-                      <span className="text-gray-500">/month</span>
+                  <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>{plan.name}</h3>
+                    <p style={{ color: '#4B5563', marginBottom: '1rem' }}>{plan.description}</p>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '3rem', fontWeight: 'bold' }}>${plan.price}</span>
+                      <span style={{ color: '#6B7280' }}>/month</span>
                     </div>
                   </div>
 
-                  <ul className="space-y-3 mb-8">
+                  <ul style={{ marginBottom: '2rem' }}>
                     {plan.features.map((feature, index) => (
-                      <li key={index} className="flex items-center gap-3">
+                      <li key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
                         <svg
-                          className="w-5 h-5 text-green-500 flex-shrink-0"
+                          style={{ width: '1.25rem', height: '1.25rem', color: '#10B981', flexShrink: 0 }}
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -165,7 +138,7 @@ export default function PricingPage() {
                             d="M5 13l4 4L19 7"
                           />
                         </svg>
-                        <span className="text-gray-600">{feature}</span>
+                        <span style={{ color: '#4B5563' }}>{feature}</span>
                       </li>
                     ))}
                   </ul>
@@ -173,11 +146,28 @@ export default function PricingPage() {
                   <button
                     onClick={() => handleSubscribe(plan.planType)}
                     disabled={loading === plan.planType}
-                    className={`w-full py-3 rounded-lg font-semibold transition-colors ${
-                      plan.highlighted
-                        ? 'bg-blue-600 text-white hover:bg-blue-700'
-                        : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      borderRadius: '0.5rem',
+                      fontWeight: 600,
+                      border: 'none',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s',
+                      ...(plan.highlighted ? {
+                        backgroundColor: '#3B82F6',
+                        color: 'white'
+                      } : {
+                        backgroundColor: '#F3F4F6',
+                        color: '#111827'
+                      })
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = plan.highlighted ? '#2563EB' : '#E5E7EB'
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = plan.highlighted ? '#3B82F6' : '#F3F4F6'
+                    }}
                   >
                     {loading === plan.planType ? 'Processing...' : plan.cta}
                   </button>
@@ -188,30 +178,30 @@ export default function PricingPage() {
         </section>
 
         {/* FAQ Section */}
-        <section className="section bg-gray-50">
-          <div className="container-custom max-w-4xl">
-            <h2 className="text-3xl font-bold text-center mb-12">
+        <section className="section" style={{ backgroundColor: '#F9FAFB' }}>
+          <div className="container-custom" style={{ maxWidth: '56rem' }}>
+            <h2 style={{ fontSize: '2rem', fontWeight: 'bold', textAlign: 'center', marginBottom: '3rem' }}>
               Frequently Asked Questions
             </h2>
             
-            <div className="space-y-6">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <div className="card">
-                <h3 className="text-xl font-bold mb-2">Can I change plans later?</h3>
-                <p className="text-gray-600">
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>Can I change plans later?</h3>
+                <p style={{ color: '#4B5563' }}>
                   Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately.
                 </p>
               </div>
               
               <div className="card">
-                <h3 className="text-xl font-bold mb-2">Is there a free trial?</h3>
-                <p className="text-gray-600">
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>Is there a free trial?</h3>
+                <p style={{ color: '#4B5563' }}>
                   The Free plan is available forever. Pro and Enterprise plans come with a 14-day money-back guarantee.
                 </p>
               </div>
               
               <div className="card">
-                <h3 className="text-xl font-bold mb-2">What payment methods do you accept?</h3>
-                <p className="text-gray-600">
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>What payment methods do you accept?</h3>
+                <p style={{ color: '#4B5563' }}>
                   We accept all major credit cards, debit cards, and support various local payment methods through Stripe.
                 </p>
               </div>

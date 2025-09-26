@@ -29,7 +29,7 @@ export default function HomePage() {
     {
       icon: '🎨',
       title: 'Beautiful UI',
-      description: 'Modern design with Tailwind CSS. Responsive and accessible.',
+      description: 'Modern design with responsive layouts. Clean and accessible.',
     },
     {
       icon: '🚀',
@@ -44,34 +44,49 @@ export default function HomePage() {
       
       {/* Hero Section */}
       <section className="gradient-hero text-white">
-        <div className="container-custom py-32">
+        <div className="container-custom section">
           <div className="max-w-4xl mx-auto text-center animate-fade-in">
-            <h1 className="text-5xl md:text-7xl font-bold mb-6">
+            <h1 className="text-5xl font-bold mb-6">
               Build Your SaaS
               <br />
-              <span className="text-blue-200">In Minutes</span>
+              <span style={{ color: '#BFDBFE' }}>In Minutes</span>
             </h1>
-            <p className="text-xl md:text-2xl mb-10 text-blue-100">
+            <p className="text-xl mb-8" style={{ color: '#DBEAFE' }}>
               Complete authentication, payments, and database setup. 
               Start building your product, not infrastructure.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col md:flex-row gap-4 justify-center">
               <Link 
                 href="/sign-up" 
-                className="px-8 py-4 bg-white text-blue-600 rounded-lg font-bold text-lg hover:bg-blue-50 transition-colors duration-200"
+                className="btn-primary"
+                style={{
+                  backgroundColor: 'white',
+                  color: '#3B82F6',
+                  padding: '1rem 2rem',
+                  fontSize: '1.125rem'
+                }}
               >
                 Get Started Free
               </Link>
               <Link 
                 href="/pricing" 
-                className="px-8 py-4 bg-transparent border-2 border-white text-white rounded-lg font-bold text-lg hover:bg-white hover:text-blue-600 transition-colors duration-200"
+                style={{
+                  padding: '1rem 2rem',
+                  border: '2px solid white',
+                  color: 'white',
+                  borderRadius: '0.5rem',
+                  fontWeight: 'bold',
+                  fontSize: '1.125rem',
+                  transition: 'all 0.2s',
+                  display: 'inline-block'
+                }}
               >
                 View Pricing
               </Link>
             </div>
             
             {/* Social Proof */}
-            <div className="mt-12 flex items-center justify-center gap-8 text-sm text-blue-200">
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm" style={{ color: '#BFDBFE' }}>
               <div className="flex items-center gap-2">
                 <span className="text-2xl">✨</span>
                 <span>No credit card required</span>
@@ -92,14 +107,14 @@ export default function HomePage() {
       {/* Features Section */}
       <section className="section bg-white">
         <div className="container-custom">
-          <div className="text-center mb-16">
+          <div className="text-center mb-8">
             <h2 className="text-4xl font-bold mb-4">Everything You Need</h2>
             <p className="text-xl text-gray-600">
               Production-ready modules for modern SaaS applications
             </p>
           </div>
           
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="feature-grid">
             {features.map((feature, index) => (
               <FeatureCard key={index} {...feature} />
             ))}
@@ -110,21 +125,21 @@ export default function HomePage() {
       {/* Stats Section */}
       <section className="section bg-gray-50">
         <div className="container-custom">
-          <div className="grid md:grid-cols-4 gap-8 text-center">
+          <div className="stats-grid">
             <div className="animate-fade-in">
-              <div className="text-5xl font-bold text-blue-600 mb-2">15min</div>
+              <div className="text-5xl font-bold mb-2" style={{ color: '#3B82F6' }}>15min</div>
               <div className="text-gray-600">Setup Time</div>
             </div>
-            <div className="animate-fade-in" style={{ animationDelay: '0.1s' }}>
-              <div className="text-5xl font-bold text-blue-600 mb-2">3</div>
+            <div className="animate-fade-in">
+              <div className="text-5xl font-bold mb-2" style={{ color: '#3B82F6' }}>3</div>
               <div className="text-gray-600">Core Modules</div>
             </div>
-            <div className="animate-fade-in" style={{ animationDelay: '0.2s' }}>
-              <div className="text-5xl font-bold text-blue-600 mb-2">100%</div>
+            <div className="animate-fade-in">
+              <div className="text-5xl font-bold mb-2" style={{ color: '#3B82F6' }}>100%</div>
               <div className="text-gray-600">TypeScript</div>
             </div>
-            <div className="animate-fade-in" style={{ animationDelay: '0.3s' }}>
-              <div className="text-5xl font-bold text-blue-600 mb-2">$0</div>
+            <div className="animate-fade-in">
+              <div className="text-5xl font-bold mb-2" style={{ color: '#3B82F6' }}>$0</div>
               <div className="text-gray-600">To Start</div>
             </div>
           </div>
@@ -134,16 +149,25 @@ export default function HomePage() {
       {/* How It Works */}
       <section className="section bg-white">
         <div className="container-custom">
-          <div className="text-center mb-16">
+          <div className="text-center mb-8">
             <h2 className="text-4xl font-bold mb-4">How It Works</h2>
             <p className="text-xl text-gray-600">
               Get up and running in three simple steps
             </p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-12">
+          <div className="how-it-works-grid">
             <div className="text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <div className="mb-4 mx-auto" style={{
+                width: '4rem',
+                height: '4rem',
+                backgroundColor: '#DBEAFE',
+                borderRadius: '9999px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.5rem'
+              }}>
                 <span className="text-3xl">1️⃣</span>
               </div>
               <h3 className="text-2xl font-bold mb-4">Sign Up</h3>
@@ -153,7 +177,16 @@ export default function HomePage() {
             </div>
             
             <div className="text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <div className="mb-4" style={{
+                width: '4rem',
+                height: '4rem',
+                backgroundColor: '#DBEAFE',
+                borderRadius: '9999px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.5rem'
+              }}>
                 <span className="text-3xl">2️⃣</span>
               </div>
               <h3 className="text-2xl font-bold mb-4">Choose Plan</h3>
@@ -163,7 +196,16 @@ export default function HomePage() {
             </div>
             
             <div className="text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <div className="mb-4" style={{
+                width: '4rem',
+                height: '4rem',
+                backgroundColor: '#DBEAFE',
+                borderRadius: '9999px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.5rem'
+              }}>
                 <span className="text-3xl">3️⃣</span>
               </div>
               <h3 className="text-2xl font-bold mb-4">Start Building</h3>
@@ -178,15 +220,24 @@ export default function HomePage() {
       {/* CTA Section */}
       <section className="section gradient-primary text-white">
         <div className="container-custom text-center">
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
+          <h2 className="text-4xl font-bold mb-6">
             Ready to Get Started?
           </h2>
-          <p className="text-xl mb-10 text-blue-100">
+          <p className="text-xl mb-8" style={{ color: '#DBEAFE' }}>
             Join thousands of developers building amazing SaaS products
           </p>
           <Link 
             href="/sign-up"
-            className="inline-block px-10 py-4 bg-white text-blue-600 rounded-lg font-bold text-lg hover:bg-blue-50 transition-colors duration-200"
+            style={{
+              display: 'inline-block',
+              padding: '1rem 2.5rem',
+              backgroundColor: 'white',
+              color: '#3B82F6',
+              borderRadius: '0.5rem',
+              fontWeight: 'bold',
+              fontSize: '1.125rem',
+              transition: 'all 0.2s'
+            }}
           >
             Start Free Trial
           </Link>

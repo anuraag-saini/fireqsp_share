@@ -1,4 +1,4 @@
-// app/layout.tsx
+// app/layout.tsx - No Auth Version
 import './globals-simple.css'
 
 export const metadata = {
@@ -14,9 +14,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div style={{ padding: '10px', backgroundColor: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: '8px', margin: '10px' }}>
-          ℹ️ <strong>Demo Mode:</strong> This is running without authentication. Add real Clerk keys to enable auth features.
-        </div>
         {children}
       </body>
     </html>
